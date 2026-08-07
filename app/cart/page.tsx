@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -103,7 +103,7 @@ export default function CartPage() {
     }
 
     try {
-      const { data: transaction, error: transError } = await supabase
+      await supabase
         .from('transactions')
         .insert([{
           user_id: userId,
@@ -114,15 +114,11 @@ export default function CartPage() {
         .select()
         .single();
 
-      if (transError) throw transError;
-
       const newSolde = solde - totalPrice;
-      const { error: updateError } = await supabase
+      await supabase
         .from('users')
         .update({ solde_compte: newSolde })
         .eq('id', userId);
-
-      if (updateError) throw updateError;
 
       await supabase
         .from('cart_items')
@@ -184,31 +180,14 @@ export default function CartPage() {
                   
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-zinc-700 rounded-lg p-2">
-                      <button
-                        onClick={() => handleUpdateQuantity(item.id, item.quantite - 1)}
-                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded"
-                      >
-                        -
-                      </button>
+                      <button onClick={() => handleUpdateQuantity(item.id, item.quantite - 1)} className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded">-</button>
                       <span className="px-4">{item.quantite}</span>
-                      <button
-                        onClick={() => handleUpdateQuantity(item.id, item.quantite + 1)}
-                        className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded"
-                      >
-                        +
-                      </button>
+                      <button onClick={() => handleUpdateQuantity(item.id, item.quantite + 1)} className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded">+</button>
                     </div>
                     
-                    <p className="font-bold text-green-400 min-w-24 text-right">
-                      {(item.product.prix * item.quantite).toFixed(2)}€
-                    </p>
+                    <p className="font-bold text-green-400 min-w-24 text-right">{(item.product.prix * item.quantite).toFixed(2)}€</p>
                     
-                    <button
-                      onClick={() => handleRemoveItem(item.id)}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-bold"
-                    >
-                      🗑️
-                    </button>
+                    <button onClick={() => handleRemoveItem(item.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-bold">🗑️</button>
                   </div>
                 </div>
               ))}
@@ -233,15 +212,7 @@ export default function CartPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleCheckout}
-              disabled={solde < totalPrice}
-              className={`w-full py-3 rounded-lg font-bold text-lg transition ${
-                solde < totalPrice
-                  ? 'bg-gray-600 cursor-not-allowed opacity-50'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
+            <button onClick={handleCheckout} disabled={solde < totalPrice} className={w-full py-3 rounded-lg font-bold text-lg transition \}>
               💳 Valider la commande
             </button>
           </>
