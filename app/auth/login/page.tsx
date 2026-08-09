@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import Image from 'next/image';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -14,111 +14,173 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setLoading(true);
     setError('');
 
     try {
-      const { data, error: authError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', username)
-        .single();
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+        }),
+      });
 
-      if (authError || !data) {
-        setError('Utilisateur non trouvé');
-        setLoading(false);
-        return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error || 'Erreur de connexion.'
+        );
       }
 
-      if (data.password_hash !== password) {
-        setError('Mot de passe incorrect');
-        setLoading(false);
-        return;
-      }
+      localStorage.setItem(
+        'user_id',
+        result.user.id
+      );
 
-      localStorage.setItem('user_id', data.id);
-      localStorage.setItem('username', data.username);
-      localStorage.setItem('solde_compte', data.solde_compte);
-      
+      localStorage.setItem(
+        'username',
+        result.user.username || result.user.nom || ''
+      );
+
+      localStorage.setItem('grade', result.user.grade || '');
+      localStorage.setItem('popotte_show_respect', '1');
+
+      localStorage.setItem(
+        'solde_compte',
+        String(result.user.solde_compte ?? 0)
+      );
+
       router.push('/dashboard');
+      router.refresh();
+
     } catch (err: any) {
-      setError(err.message || 'Erreur de connexion');
+      setError(
+        err?.message || 'Erreur de connexion.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-        <div className="flex justify-center mb-6">
-          <div className="relative w-24 h-24">
-            <Image
-              src="/logo.png"
-              alt="Popotte"
-              width={96}
-              height={96}
-              className="rounded-full"
-            />
-          </div>
-        </div>
+    <main className="min-h-screen bg-[#090a0d] text-white px-4 py-8">
 
-        <h1 className="text-3xl font-bold text-center mb-2 text-gray-800">Popotte</h1>
-        <p className="text-gray-600 text-center mb-8">BTA Saint-Médard-en-Jalles</p>
+      <div className="w-full max-w-md mx-auto">
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Identifiant
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Votre identifiant"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
+        <div className="text-center mb-8">
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mot de passe
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Votre mot de passe"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition disabled:opacity-50"
+          <h1
+            className="text-5xl leading-none text-white"
+            style={{
+              fontFamily:
+                'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
+            }}
           >
-            {loading ? 'Connexion...' : 'Se connecter'}
-          </button>
-        </form>
+            POPOTTE
+          </h1>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-600">
-            Pas encore inscrit ?{' '}
-            <a href="/auth/signup" className="text-blue-600 hover:underline font-bold">
-              S'inscrire ici
-            </a>
+          <p className="text-gray-400 font-bold text-[11px] tracking-[0.18em] mt-3">
+            BTA SAINT-MÉDARD-EN-JALLES
           </p>
+
         </div>
+
+        <div className="bg-[#191b21] border border-white/10 rounded-3xl p-5 md:p-7 shadow-2xl">
+
+          <h2 className="text-2xl font-black">
+            Connexion
+          </h2>
+
+          <p className="text-gray-500 text-sm mt-1 mb-6">
+            Accédez à votre espace Popotte
+          </p>
+
+          <form
+            onSubmit={handleLogin}
+            className="space-y-5"
+          >
+
+            <div>
+
+              <label className="block text-sm font-black text-gray-300 mb-2">
+                Nom
+              </label>
+
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Votre nom"
+                autoComplete="username"
+                className="w-full px-4 py-3.5 bg-[#101114] border border-white/10 rounded-xl text-white placeholder-gray-600 outline-none focus:border-blue-500 transition"
+                required
+              />
+
+            </div>
+
+            <div>
+
+              <label className="block text-sm font-black text-gray-300 mb-2">
+                Mot de passe
+              </label>
+
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Votre mot de passe"
+                autoComplete="current-password"
+                className="w-full px-4 py-3.5 bg-[#101114] border border-white/10 rounded-xl text-white placeholder-gray-600 outline-none focus:border-blue-500 transition"
+                required
+              />
+
+            </div>
+
+            {error && (
+              <div className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-gray-700 py-4 rounded-xl font-black text-lg transition-all"
+            >
+              {loading
+                ? 'Connexion...'
+                : 'Se connecter'}
+            </button>
+
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-white/10 text-center">
+
+            <p className="text-gray-500 text-sm">
+              Pas encore inscrit ?
+            </p>
+
+            <Link
+              href="/auth/signup"
+              className="inline-block mt-1 text-blue-400 hover:text-blue-300 font-black"
+            >
+              Créer mon compte
+            </Link>
+
+          </div>
+
+        </div>
+
       </div>
-    </div>
+
+    </main>
   );
 }
+
+
