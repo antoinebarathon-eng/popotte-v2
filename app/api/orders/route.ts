@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    // On rÃ©cupÃ¨re l'utilisateur et son solde actuel.
+    // On récupère l'utilisateur et son solde actuel.
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, username, solde_compte')
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     if (userError) throw userError;
 
     // On relit les produits depuis Supabase pour ne jamais faire confiance
-    // au prix envoyÃ© par le navigateur.
+    // au prix envoyé par le navigateur.
     const productIds = items.map((item: any) => String(item.product_id || '')).filter(Boolean);
 
     const { data: products, error: productsError } = await supabase
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       const quantity = Number(rawItem.quantite);
 
       if (!Number.isInteger(quantity) || quantity <= 0) {
-        return NextResponse.json({ error: 'QuantitÃ© invalide.' }, { status: 400 });
+        return NextResponse.json({ error: 'Quantité invalide.' }, { status: 400 });
       }
 
       const product = productMap.get(productId);
@@ -106,18 +106,18 @@ export async function POST(request: NextRequest) {
 
     const ancienSolde = Number(user.solde_compte || 0);
 
-    // Partie rÃ©ellement couverte par l'argent disponible.
+    // Partie réellement couverte par l'argent disponible.
     const montantPaye = Number(Math.min(Math.max(ancienSolde, 0), total).toFixed(2));
 
-    // Partie rÃ©ellement impayÃ©e.
-    // Si le compte est dÃ©jÃ  nÃ©gatif, toute la nouvelle commande devient une dette.
+    // Partie réellement impayée.
+    // Si le compte est déjà négatif, toute la nouvelle commande devient une dette.
     const montantDette = Number(Math.max(total - montantPaye, 0).toFixed(2));
 
     // Le solde conserve le comportement voulu :
-    // un utilisateur peut passer sous 0 â‚¬.
+    // un utilisateur peut passer sous 0 €.
     const nouveauSolde = Number((ancienSolde - total).toFixed(2));
 
-    // CrÃ©ation de la commande immÃ©diatement : aucune validation admin.
+    // Création de la commande immédiatement : aucune validation admin.
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
       throw itemsError;
     }
 
-    // Mise Ã  jour des stocks.
+    // Mise à jour des stocks.
     for (const item of finalItems) {
       const product = productMap.get(item.product_id)!;
       const newStock = product.stock_quantity - item.quantite;
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       if (stockError) throw stockError;
     }
 
-    // Mise Ã  jour du compte utilisateur.
+    // Mise à jour du compte utilisateur.
     const { error: balanceError } = await supabase
       .from('users')
       .update({ solde_compte: nouveauSolde })
@@ -169,8 +169,8 @@ export async function POST(request: NextRequest) {
     if (balanceError) throw balanceError;
 
     // IMPORTANT :
-    // On enregistre uniquement la partie rÃ©ellement impayÃ©e.
-    // Une commande de 2 â‚¬ avec 1 â‚¬ de solde => dette = 1 â‚¬, pas 2 â‚¬.
+    // On enregistre uniquement la partie réellement impayée.
+    // Une commande de 2 € avec 1 € de solde => dette = 1 €, pas 2 €.
     if (montantDette > 0) {
       const { error: transactionError } = await supabase
         .from('transactions')
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       nouveauSolde,
     });
   } catch (error: any) {
-    console.error('Erreur crÃ©ation commande:', error);
+    console.error('Erreur création commande:', error);
 
     return NextResponse.json(
       { error: error?.message || 'Erreur lors de la commande.' },
