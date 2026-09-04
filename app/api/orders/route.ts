@@ -1,205 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { readSession } from '@/lib/session';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+/*
+ * Création d'une commande.
+ *
+ * Deux changements par rapport à l'ancienne version :
+ *
+ *  - l'utilisateur vient du cookie de session signé, plus du corps de la
+ *    requête. Avant, l'API débitait le compte dont l'identifiant lui était
+ *    envoyé : il suffisait de changer une valeur dans le navigateur pour
+ *    commander sur le compte d'un autre.
+ *
+ *  - tout le travail (commande, lignes, stocks, solde, dette) est fait par
+ *    la fonction Postgres create_order, donc dans une seule transaction.
+ *    Avant, cinq écritures indépendantes pouvaient laisser une commande
+ *    enregistrée mais jamais débitée si l'une d'elles échouait.
+ */
 
-function getSupabaseAdmin() {
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Variables Supabase serveur manquantes.');
+/** Deux commandes du même compte à moins de 3 secondes : c'est un double clic. */
+const recentOrders = new Map<string, { at: number; body: unknown }>();
+
+function rememberIdempotency(key: string, body: unknown) {
+  recentOrders.set(key, { at: Date.now(), body });
+
+  for (const [k, v] of recentOrders) {
+    if (Date.now() - v.at > 60_000) recentOrders.delete(k);
   }
-
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const userId = String(body.user_id || '').trim();
-    const items = Array.isArray(body.items) ? body.items : [];
+    const session = readSession(request);
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Utilisateur manquant.' }, { status: 400 });
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Session expirée. Reconnecte-toi.' },
+        { status: 401 }
+      );
     }
 
-    if (items.length === 0) {
+    const body = await request.json();
+    const rawItems = Array.isArray(body?.items) ? body.items : [];
+
+    if (rawItems.length === 0) {
       return NextResponse.json({ error: 'Panier vide.' }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
+    // Rejoue la réponse plutôt que de passer une deuxième commande si le
+    // navigateur renvoie la même requête (double clic, retour arrière).
+    const idempotencyKey = request.headers.get('x-idempotency-key');
 
-    // On récupère l'utilisateur et son solde actuel.
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, username, solde_compte')
-      .eq('id', userId)
-      .single();
+    if (idempotencyKey) {
+      const seen = recentOrders.get(`${session.uid}:${idempotencyKey}`);
 
-    if (userError) throw userError;
+      if (seen) {
+        return NextResponse.json(seen.body as object);
+      }
+    }
 
-    // On relit les produits depuis Supabase pour ne jamais faire confiance
-    // au prix envoyé par le navigateur.
-    const productIds = items.map((item: any) => String(item.product_id || '')).filter(Boolean);
+    // On n'envoie que l'identifiant et la quantité : le prix, le nom, le
+    // stock et la disponibilité sont relus en base par la fonction.
+    const items: Array<{ product_id: string; quantite: number }> = [];
 
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('id, nom, prix, stock_quantity, active')
-      .in('id', productIds);
+    for (const rawItem of rawItems) {
+      const productId = String(rawItem?.product_id || '').trim();
+      const quantite = Number(rawItem?.quantite);
 
-    if (productsError) throw productsError;
+      if (!productId) {
+        return NextResponse.json({ error: 'Produit manquant.' }, { status: 400 });
+      }
 
-    const productMap = new Map((products || []).map((product) => [product.id, product]));
-
-    let total = 0;
-    const finalItems: Array<{
-      product_id: string;
-      nom_produit: string;
-      prix_unitaire: number;
-      quantite: number;
-    }> = [];
-
-    for (const rawItem of items) {
-      const productId = String(rawItem.product_id || '');
-      const quantity = Number(rawItem.quantite);
-
-      if (!Number.isInteger(quantity) || quantity <= 0) {
+      if (!Number.isInteger(quantite) || quantite <= 0) {
         return NextResponse.json({ error: 'Quantité invalide.' }, { status: 400 });
       }
 
-      const product = productMap.get(productId);
-
-      if (!product) {
-        return NextResponse.json({ error: 'Produit introuvable.' }, { status: 400 });
-      }
-
-      if (!product.active) {
-        return NextResponse.json(
-          { error: `Le produit "${product.nom}" n'est plus disponible.` },
-          { status: 400 }
-        );
-      }
-
-      if (product.stock_quantity < quantity) {
-        return NextResponse.json(
-          { error: `Stock insuffisant pour "${product.nom}".` },
-          { status: 400 }
-        );
-      }
-
-      const prix = Number(product.prix);
-      total += prix * quantity;
-
-      finalItems.push({
-        product_id: product.id,
-        nom_produit: product.nom,
-        prix_unitaire: prix,
-        quantite: quantity,
-      });
+      items.push({ product_id: productId, quantite });
     }
 
-    total = Number(total.toFixed(2));
-
-    const ancienSolde = Number(user.solde_compte || 0);
-
-    // Partie réellement couverte par l'argent disponible.
-    const montantPaye = Number(Math.min(Math.max(ancienSolde, 0), total).toFixed(2));
-
-    // Partie réellement impayée.
-    // Si le compte est déjà négatif, toute la nouvelle commande devient une dette.
-    const montantDette = Number(Math.max(total - montantPaye, 0).toFixed(2));
-
-    // Le solde conserve le comportement voulu :
-    // un utilisateur peut passer sous 0 €.
-    const nouveauSolde = Number((ancienSolde - total).toFixed(2));
-
-    // Création de la commande immédiatement : aucune validation admin.
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        user_id: userId,
-        montant: total,
-        status: 'en_attente',
-      })
-      .select('id, user_id, montant, status, created_at')
-      .single();
-
-    if (orderError) throw orderError;
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(
-        finalItems.map((item) => ({
-          order_id: order.id,
-          product_id: item.product_id,
-          nom_produit: item.nom_produit,
-          prix_unitaire: item.prix_unitaire,
-          quantite: item.quantite,
-        }))
-      );
-
-    if (itemsError) {
-      await supabase.from('orders').delete().eq('id', order.id);
-      throw itemsError;
-    }
-
-    // Mise à jour des stocks.
-    for (const item of finalItems) {
-      const product = productMap.get(item.product_id)!;
-      const newStock = product.stock_quantity - item.quantite;
-
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ stock_quantity: newStock })
-        .eq('id', item.product_id);
-
-      if (stockError) throw stockError;
-    }
-
-    // Mise à jour du compte utilisateur.
-    const { error: balanceError } = await supabase
-      .from('users')
-      .update({ solde_compte: nouveauSolde })
-      .eq('id', userId);
-
-    if (balanceError) throw balanceError;
-
-    // IMPORTANT :
-    // On enregistre uniquement la partie réellement impayée.
-    // Une commande de 2 € avec 1 € de solde => dette = 1 €, pas 2 €.
-    if (montantDette > 0) {
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-      montant: montantDette,
-      status: 'dette',
-      type_paiement: 'compte_interne',
-        });
-
-      if (transactionError) throw transactionError;
-    }
-
-    return NextResponse.json({
-      ok: true,
-      order,
-      total,
-      montantPaye,
-      montantDette,
-      ancienSolde,
-      nouveauSolde,
+    const { data, error } = await supabaseAdmin.rpc('create_order', {
+      p_user_id: session.uid,
+      p_items: items,
     });
-  } catch (error: any) {
-    console.error('Erreur création commande:', error);
+
+    if (error) {
+      // Les refus métier (stock, produit inactif, panier vide) sont levés
+      // par la fonction avec un message destiné à l'utilisateur.
+      const isBusinessError = error.code === 'P0001' || error.code === 'P0002';
+
+      if (isBusinessError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+
+      console.error('Création de commande:', error);
+
+      return NextResponse.json(
+        { error: 'Erreur lors de la commande.' },
+        { status: 500 }
+      );
+    }
+
+    const result = {
+      ok: true,
+      order: { id: data.order_id },
+      total: Number(data.total),
+      montantPaye: Number(data.montantPaye),
+      montantDette: Number(data.montantDette),
+      ancienSolde: Number(data.ancienSolde),
+      nouveauSolde: Number(data.nouveauSolde),
+    };
+
+    if (idempotencyKey) {
+      rememberIdempotency(`${session.uid}:${idempotencyKey}`, result);
+    }
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('Création de commande:', error);
 
     return NextResponse.json(
-      { error: error?.message || 'Erreur lors de la commande.' },
+      { error: 'Erreur lors de la commande.' },
       { status: 500 }
     );
   }
 }
-
