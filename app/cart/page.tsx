@@ -42,7 +42,16 @@ export default function CartPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const meResponse = await fetch('/api/auth/me', { cache: 'no-store' });
+      // Les deux appels partaient l'un après l'autre : l'ouverture du
+      // panier attendait deux allers-retours au lieu d'un.
+      const [meResponse, produits] = await Promise.all([
+        fetch('/api/auth/me', { cache: 'no-store' }),
+        supabase
+          .from('products')
+          .select('id, nom, description, prix, categorie, image_url, stock_quantity, active')
+          .eq('active', true)
+          .order('created_at', { ascending: true }),
+      ]);
 
       if (meResponse.status === 401) {
         router.replace('/auth/login');
@@ -55,17 +64,10 @@ export default function CartPage() {
         throw new Error(me?.error || 'Impossible de lire ton compte.');
       }
 
+      if (produits.error) throw produits.error;
+
       setSoldeCents(toCents(me.user.solde_compte));
-
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: true });
-
-      if (productsError) throw productsError;
-
-      setProducts(productsData || []);
+      setProducts(produits.data || []);
     } catch (err) {
       console.error(err);
       setError(
@@ -229,43 +231,38 @@ export default function CartPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#090a0d] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-5xl mb-4" aria-hidden="true">
-            🛒
-          </div>
-          <p className="text-gray-400">Chargement du panier...</p>
-        </div>
+        <p className="text-gray-400 text-sm">Chargement du panier...</p>
       </main>
     );
   }
 
   return (
     <main className="min-h-screen bg-[#090a0d] text-white pb-10">
-      <header className="sticky top-0 z-40 bg-[#101114]/95 backdrop-blur-md border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-[#090a0d]/95 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <Link
             href="/dashboard"
-            className="text-gray-300 hover:text-white font-medium"
+            className="text-gray-400 hover:text-white text-sm font-black"
           >
             ← Retour
           </Link>
 
-          <h1 className="text-xl md:text-2xl font-black">🛒 panier</h1>
+          <h1 className="text-lg font-black">Panier</h1>
 
-          <div className="text-sm text-gray-400">
+          <div className="text-xs text-gray-400">
             {totalItems} article{totalItems >= 2 ? 's' : ''}
           </div>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 py-5">
-        <section className="rounded-3xl border border-white/10 bg-[#191b21] p-5 mb-6">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400">Solde disponible</span>
+      <div className="max-w-5xl mx-auto px-4 py-5 flex flex-col gap-6">
+        <section className="rounded-3xl border border-white/10 bg-[#14161b] p-5">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-gray-400 text-sm">Solde disponible</span>
 
             <strong
               className={`text-2xl font-black ${
-                soldeCents < 0 ? 'text-red-400' : 'text-emerald-400'
+                soldeCents < 0 ? 'text-red-400' : 'text-white'
               }`}
             >
               {formatEuros(soldeCents)}
@@ -276,7 +273,7 @@ export default function CartPage() {
         {error && (
           <div
             role="alert"
-            className="mb-6 bg-red-950/40 border border-red-500/40 text-red-200 px-5 py-4 rounded-2xl"
+            className="bg-red-950/40 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm"
           >
             {error}
           </div>
@@ -285,70 +282,66 @@ export default function CartPage() {
         {notice && (
           <div
             role="status"
-            className="mb-6 bg-amber-950/40 border border-amber-500/40 text-amber-200 px-5 py-4 rounded-2xl"
+            className="bg-[#14161b] border border-white/10 text-gray-300 px-4 py-3 rounded-xl text-sm"
           >
             {notice}
           </div>
         )}
 
         {cartItems.length === 0 ? (
-          <div className="text-center py-24">
-            <div className="text-7xl mb-6" aria-hidden="true">
+          <div className="text-center py-24 flex flex-col items-center gap-4">
+            <div className="text-7xl" aria-hidden="true">
               🛒
             </div>
 
-            <h2 className="text-2xl font-black mb-3">Ton panier est vide</h2>
+            <h2 className="text-lg font-black">Ton panier est vide</h2>
 
-            <p className="text-gray-400 mb-8">
+            <p className="text-gray-400 text-sm">
               Ajoute des produits depuis le catalogue.
             </p>
 
             <Link
               href="/dashboard"
-              className="inline-flex bg-blue-600 hover:bg-blue-500 px-7 py-4 rounded-2xl font-black"
+              className="mt-2 inline-flex bg-blue-600 hover:bg-blue-500 px-7 py-4 rounded-xl font-black transition"
             >
               Voir les produits
             </Link>
           </div>
         ) : (
           <>
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               {cartItems.map(({ product, quantity }) => (
                 <article
                   key={product.id}
-                  className="bg-[#191b21] border border-white/10 rounded-3xl p-5"
+                  className="bg-[#14161b] border border-white/10 rounded-3xl p-5"
                 >
-                  <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-4">
                     <div className="flex justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-black">{product.nom}</h2>
+                      <div className="min-w-0 flex flex-col gap-1">
+                        <h2 className="text-lg font-black">{product.nom}</h2>
 
-                        <p className="text-gray-400 text-sm mt-1">
-                          {product.description || product.nom}
-                        </p>
-
-                        <p className="text-emerald-400 font-black text-xl mt-3">
-                          {formatEuros(toCents(product.prix))}
+                        <p className="text-gray-400 text-xs">
+                          {formatEuros(toCents(product.prix))} l’unité
                         </p>
                       </div>
 
-                      <strong className="text-xl font-black">
+                      <strong className="text-lg font-black text-white">
                         {formatEuros(toCents(product.prix) * quantity)}
                       </strong>
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
                       <button
                         type="button"
                         disabled={ordering}
                         aria-label={`Retirer un ${product.nom}`}
                         onClick={() => updateQuantity(product.id, quantity - 1)}
-                        className="w-12 h-12 rounded-xl bg-[#292c33] font-black text-xl"
+                        className="w-12 h-12 rounded-xl bg-white/10 hover:bg-white/15 font-black text-xl transition disabled:opacity-40"
                       >
                         −
                       </button>
 
-                      <span className="text-xl font-black">
+                      <span className="text-lg font-black">
                         <span className="sr-only">Quantité : </span>
                         {quantity}
                       </span>
@@ -358,7 +351,7 @@ export default function CartPage() {
                         disabled={ordering || quantity >= product.stock_quantity}
                         aria-label={`Ajouter un ${product.nom}`}
                         onClick={() => updateQuantity(product.id, quantity + 1)}
-                        className="w-12 h-12 rounded-xl bg-blue-600 font-black text-xl disabled:opacity-40"
+                        className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 font-black text-xl transition disabled:opacity-40"
                       >
                         +
                       </button>
@@ -368,7 +361,7 @@ export default function CartPage() {
                       type="button"
                       disabled={ordering}
                       onClick={() => updateQuantity(product.id, 0)}
-                      className="text-red-400 text-sm font-bold text-left"
+                      className="text-gray-400 hover:text-white text-sm font-black text-left transition"
                     >
                       Supprimer {product.nom}
                     </button>
@@ -377,25 +370,23 @@ export default function CartPage() {
               ))}
             </div>
 
-            <section className="mt-8 bg-[#191b21] border border-white/10 rounded-3xl p-5">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-lg">Total</span>
+            <section className="bg-[#14161b] border border-white/10 rounded-3xl p-5 flex flex-col gap-5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-gray-400 text-sm">Total</span>
 
-                <span className="text-3xl font-black text-emerald-400">
+                <span className="text-2xl font-black text-white">
                   {formatEuros(totalCents)}
                 </span>
               </div>
 
               {soldeCents < totalCents && (
-                <div className="mt-5 bg-red-950/40 border border-red-500/30 rounded-2xl p-4">
-                  <p className="text-red-300 font-black">⚠️ Solde insuffisant</p>
-
-                  <p className="text-red-200 text-sm mt-2">
-                    La commande sera quand même acceptée.
+                <div className="bg-red-950/40 border border-red-500/40 rounded-xl px-4 py-3 flex flex-col gap-2">
+                  <p className="text-red-300 font-black text-sm">
+                    Solde insuffisant
                   </p>
 
-                  <p className="text-red-200 text-sm mt-2">
-                    Dette après commande :{' '}
+                  <p className="text-red-200 text-sm">
+                    La commande sera quand même acceptée, dette après commande :{' '}
                     <strong>
                       {formatEuros(totalCents - Math.max(soldeCents, 0))}
                     </strong>
@@ -403,23 +394,25 @@ export default function CartPage() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleOrder}
-                disabled={ordering || cartItems.length === 0}
-                className="w-full mt-6 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 px-6 py-4 rounded-2xl font-black text-lg"
-              >
-                {ordering
-                  ? 'Commande en cours...'
-                  : `Valider ma commande — ${formatEuros(totalCents)}`}
-              </button>
+              <div className="flex flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={handleOrder}
+                  disabled={ordering || cartItems.length === 0}
+                  className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 px-6 py-4 rounded-xl font-black text-lg transition"
+                >
+                  {ordering
+                    ? 'Commande en cours...'
+                    : `Valider ma commande — ${formatEuros(totalCents)}`}
+                </button>
 
-              <Link
-                href="/dashboard"
-                className="block text-center mt-4 text-gray-400 text-sm"
-              >
-                ← Continuer mes achats
-              </Link>
+                <Link
+                  href="/dashboard"
+                  className="block text-center text-blue-400 hover:text-blue-300 text-sm font-black"
+                >
+                  ← Continuer mes achats
+                </Link>
+              </div>
             </section>
           </>
         )}
@@ -431,24 +424,25 @@ export default function CartPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirmation-titre"
-            className="w-full max-w-md bg-[#191b21] border border-emerald-500/30 rounded-3xl p-7 text-center"
+            className="w-full max-w-md bg-[#14161b] border border-white/10 rounded-3xl p-7 text-center flex flex-col items-center gap-4"
           >
-            <div className="text-6xl mb-4" aria-hidden="true">
-              ✅
+            <div
+              className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-black"
+              aria-hidden="true"
+            >
+              ✓
             </div>
 
-            <p className="text-emerald-400 font-black">COMMANDE CONFIRMÉE</p>
-
-            <h2 id="confirmation-titre" className="text-2xl font-black mt-2">
-              Merci pour ta commande !
+            <h2 id="confirmation-titre" className="text-lg font-black">
+              Commande confirmée
             </h2>
 
-            <p className="text-gray-400 mt-4">
+            <p className="text-gray-400 text-sm">
               Total : {formatEuros(summary.totalCents)}
             </p>
 
             {summary.detteCents > 0 && (
-              <p className="text-red-400 font-black mt-3">
+              <p className="text-red-400 font-black text-sm">
                 Dette créée : {formatEuros(summary.detteCents)}
               </p>
             )}
@@ -460,7 +454,7 @@ export default function CartPage() {
                 setSummary(null);
                 router.push('/dashboard');
               }}
-              className="w-full mt-6 bg-blue-600 hover:bg-blue-500 px-6 py-4 rounded-2xl font-black"
+              className="w-full mt-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] px-6 py-4 rounded-xl font-black transition"
             >
               Continuer
             </button>
