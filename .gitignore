@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# On garde le modèle de configuration, sans valeurs.
+!.env.example

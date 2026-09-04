@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -70,8 +70,9 @@ export default function SignupPage() {
       return;
     }
 
-    if (password.length < 4) {
-      setError('Le mot de passe doit contenir au moins 4 caractères.');
+    // Le serveur impose 8 caractères depuis le passage au hachage.
+    if (password.length < 8) {
+      setError('Le mot de passe doit contenir au moins 8 caractères.');
       return;
     }
 
@@ -103,11 +104,17 @@ export default function SignupPage() {
         );
       }
 
-      router.push('/auth/login');
+      // L'inscription connecte directement : le serveur a posé le cookie
+      // de session. Inutile de repasser par la page de connexion.
+      localStorage.setItem('popotte_show_respect', '1');
+      router.push('/dashboard');
+      router.refresh();
 
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.message || 'Erreur lors de la création du compte.'
+        err instanceof Error
+          ? err.message
+          : 'Erreur lors de la création du compte.'
       );
     } finally {
       setLoading(false);
@@ -188,6 +195,7 @@ export default function SignupPage() {
                           <button
                             key={item}
                             type="button"
+                            aria-pressed={selected}
                             onClick={() => {
                               setGrade(item);
                               setError('');
@@ -204,7 +212,7 @@ export default function SignupPage() {
                             </span>
 
                             {selected && (
-                              <span className="text-lg">
+                              <span className="text-lg" aria-hidden="true">
                                 ✓
                               </span>
                             )}
@@ -264,7 +272,8 @@ export default function SignupPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Votre mot de passe"
+                placeholder="8 caractères minimum"
+                minLength={8}
                 autoComplete="new-password"
                 className="w-full px-4 py-3.5 bg-[#101114] border border-white/10 rounded-xl text-white placeholder-gray-600 outline-none focus:border-blue-500 transition"
                 required
@@ -293,7 +302,10 @@ export default function SignupPage() {
 
             {/* ERREUR */}
             {error && (
-              <div className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium">
+              <div
+                role="alert"
+                className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium"
+              >
                 {error}
               </div>
             )}

@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Popotte v2
 
-## Getting Started
+Application de popotte pour la BTA Saint-Médard-en-Jalles : catalogue de
+produits, panier, solde de compte et suivi des dettes, avec un panneau
+d'administration.
 
-First, run the development server:
+Next.js 16 (App Router), React 19, Tailwind 4, Supabase (Postgres).
+
+## Mise en route
 
 ```bash
+npm install
+cp .env.example .env.local   # puis remplis les valeurs
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+L'application tourne sur http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variables d'environnement
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Toutes obligatoires, décrites dans `.env.example` :
 
-## Learn More
+| Variable | Rôle |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé publique Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clé de service, côté serveur uniquement |
+| `POPOTTE_SESSION_SECRET` | Signe le cookie de session (32 caractères minimum) |
+| `POPOTTE_ADMIN_CODE` | Code d'accès à l'administration, vérifié côté serveur |
 
-To learn more about Next.js, take a look at the following resources:
+Sans `POPOTTE_SESSION_SECRET`, l'application refuse de démarrer.
+Sans `POPOTTE_ADMIN_CODE`, l'administration est inaccessible.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Base de données
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Avant le premier démarrage, passe la migration dans le SQL Editor de
+Supabase :
 
-## Deploy on Vercel
+```
+supabase/migrations/0001_popotte_hardening.sql
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Elle crée la table `deleted_users` et la fonction `create_order`, sur
+laquelle repose toute la prise de commande. Le script est réexécutable
+sans risque.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Comment ça marche
+
+- **Session** : à la connexion, le serveur pose un cookie `popotte_session`
+  signé et `httpOnly`. L'identité de l'utilisateur ne vient jamais du
+  navigateur. Le panier, lui, reste dans le `localStorage` : ce n'est pas
+  une donnée sensible.
+- **Mots de passe** : hachés avec `scrypt` (inclus dans Node, rien à
+  installer). Les comptes créés avant le hachage sont convertis
+  automatiquement à leur prochaine connexion.
+- **Commande** : la route `/api/orders` ne fait qu'un appel à la fonction
+  Postgres `create_order`, qui vérifie le stock, écrit la commande, ses
+  lignes, le solde et la dette dans une seule transaction.
+- **Administration** : `/admin` demande une session valide, puis soit le
+  drapeau `is_admin` en base, soit le code d'accès. Le déverrouillage dure
+  deux heures.
+
+## Scripts
+
+```bash
+npm run dev     # développement
+npm run build   # build de production
+npm run start   # sert le build
+npm run lint    # ESLint
+```

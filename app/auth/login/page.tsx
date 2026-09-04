@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -38,30 +38,18 @@ export default function LoginPage() {
         );
       }
 
-      localStorage.setItem(
-        'user_id',
-        result.user.id
-      );
-
-      localStorage.setItem(
-        'username',
-        result.user.username || result.user.nom || ''
-      );
-
-      localStorage.setItem('grade', result.user.grade || '');
+      // L'identité vit maintenant dans un cookie de session signé, posé par
+      // le serveur. Plus rien d'identifiant ne transite par le localStorage :
+      // il suffisait d'y écrire l'identifiant d'un autre pour commander à sa
+      // place. Seul reste ce drapeau d'affichage, sans valeur de sécurité.
       localStorage.setItem('popotte_show_respect', '1');
-
-      localStorage.setItem(
-        'solde_compte',
-        String(result.user.solde_compte ?? 0)
-      );
 
       router.push('/dashboard');
       router.refresh();
 
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.message || 'Erreur de connexion.'
+        err instanceof Error ? err.message : 'Erreur de connexion.'
       );
     } finally {
       setLoading(false);
@@ -143,7 +131,10 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium">
+              <div
+                role="alert"
+                className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium"
+              >
                 {error}
               </div>
             )}

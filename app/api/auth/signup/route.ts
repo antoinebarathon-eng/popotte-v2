@@ -1,8 +1,20 @@
-﻿import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { hashPassword, MIN_PASSWORD_LENGTH } from '@/lib/password';
+import { newSession, setSessionCookie } from '@/lib/session';
+import { clientKey, rateLimit } from '@/lib/rateLimit';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const limit = rateLimit(clientKey(request, 'signup'), 10, 60 * 60);
+
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Trop de créations de compte. Réessaie plus tard.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+      );
+    }
+
     const body = await request.json();
 
     const grade = String(body?.grade || '').trim();
@@ -23,25 +35,23 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!password || password.length < 4) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       return NextResponse.json(
         {
-          error:
-            'Le mot de passe doit contenir au moins 4 caractères.',
+          error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.`,
         },
         { status: 400 }
       );
     }
 
-    const { data: existingUser, error: existingError } =
-      await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('username', nom)
-        .maybeSingle();
+    const { data: existingUser, error: existingError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('username', nom)
+      .maybeSingle();
 
     if (existingError) {
-      console.error(existingError);
+      console.error('Vérification du compte:', existingError);
 
       return NextResponse.json(
         { error: 'Erreur lors de la vérification du compte.' },
@@ -56,52 +66,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: user, error: insertError } =
-      await supabaseAdmin
-        .from('users')
-        .insert({
-          username: nom,
-          nom: nom,
-          grade: grade,
-          password_hash: password,
-          solde_compte: 0,
-          is_admin: false,
-        })
-        .select(
-          'id, username, nom, grade, email, solde_compte, is_admin'
-        )
-        .single();
+    const { data: user, error: insertError } = await supabaseAdmin
+      .from('users')
+      .insert({
+        username: nom,
+        nom: nom,
+        grade: grade,
+        password_hash: await hashPassword(password),
+        solde_compte: 0,
+        is_admin: false,
+      })
+      .select('id, username, nom, grade, email, solde_compte, is_admin')
+      .single();
 
     if (insertError) {
-      console.error(insertError);
+      console.error('Création du compte:', insertError);
 
       return NextResponse.json(
-        {
-          error:
-            insertError.message ||
-            'Impossible de créer le compte.',
-        },
+        { error: 'Impossible de créer le compte.' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        user,
-      },
-      { status: 201 }
-    );
+    const response = NextResponse.json({ ok: true, user }, { status: 201 });
 
-  } catch (error: any) {
-    console.error(error);
+    return setSessionCookie(response, newSession(String(user.id)));
+  } catch (error) {
+    console.error('Création du compte:', error);
 
     return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          'Erreur lors de la création du compte.',
-      },
+      { error: 'Erreur lors de la création du compte.' },
       { status: 500 }
     );
   }
