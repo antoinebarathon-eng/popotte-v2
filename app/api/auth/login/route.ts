@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const { data: user, error } = await supabaseAdmin
       .from('users')
-      .select('id, username, nom, grade, email, password_hash, solde_compte, is_admin')
+      .select('id, username, nom, email, password_hash, solde_compte, is_admin, deleted_at')
       .eq('username', username)
       .maybeSingle();
 
@@ -56,6 +56,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Contrôlé après le mot de passe : l'annoncer avant permettrait de
+    // deviner quels comptes ont existé.
+    if (user.deleted_at) {
+      return NextResponse.json(
+        { error: 'Ce compte a été supprimé. Vois avec le gérant de la popotte.' },
+        { status: 403 }
+      );
+    }
+
     // Compte créé avant le hachage : on le convertit maintenant, en silence.
     if (isLegacyPlaintext(user.password_hash || '')) {
       const { error: upgradeError } = await supabaseAdmin
@@ -76,7 +85,6 @@ export async function POST(request: NextRequest) {
         id: user.id,
         username: user.username,
         nom: user.nom,
-        grade: user.grade,
         email: user.email,
         solde_compte: user.solde_compte ?? 0,
         is_admin: user.is_admin ?? false,

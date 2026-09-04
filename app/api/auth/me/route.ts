@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const { data: user, error } = await supabaseAdmin
     .from('users')
-    .select('id, username, nom, grade, email, solde_compte, is_admin')
+    .select('id, username, nom, grade, email, solde_compte, is_admin, deleted_at')
     .eq('id', session.uid)
     .maybeSingle();
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Erreur serveur.' }, { status: 500 });
   }
 
-  if (!user) {
+  if (!user || user.deleted_at) {
     return NextResponse.json({ error: 'Compte introuvable.' }, { status: 401 });
   }
 
