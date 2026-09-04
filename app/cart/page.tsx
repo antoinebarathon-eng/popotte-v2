@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { formatEuros, toCents } from '@/lib/money';
+import { clearCart, useCart, type CartLine } from '@/lib/cart';
 
 type Product = {
   id: string;
@@ -16,100 +18,105 @@ type Product = {
   active: boolean;
 };
 
-type CartItem = {
-  id: string;
-  nom: string;
-  prix: number;
-  quantite: number;
+type OrderSummary = {
+  totalCents: number;
+  detteCents: number;
 };
 
 export default function CartPage() {
   const router = useRouter();
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [solde, setSolde] = useState(0);
+  const [cart, saveCart] = useCart();
+  const [soldeCents, setSoldeCents] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [ordering, setOrdering] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [dette, setDette] = useState(0);
+  const [notice, setNotice] = useState('');
+  const [summary, setSummary] = useState<OrderSummary | null>(null);
 
-  useEffect(() => {
-    const userId = localStorage.getItem('user_id');
+  // setOrdering est asynchrone : un double clic rapide passait deux fois
+  // avant le premier rendu. Le verrou ci-dessous est immédiat.
+  const orderInFlight = useRef(false);
 
-    if (!userId) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    loadData(userId);
-  }, [router]);
-
-  async function loadData(userId: string) {
+  const loadData = useCallback(async () => {
     try {
-      const savedCart = localStorage.getItem('popotte_cart');
+      const meResponse = await fetch('/api/auth/me', { cache: 'no-store' });
 
-      if (savedCart) {
-        try {
-          const parsed = JSON.parse(savedCart);
-
-          if (Array.isArray(parsed)) {
-            setCart(parsed);
-          } else {
-            setCart([]);
-          }
-        } catch {
-          setCart([]);
-          localStorage.removeItem('popotte_cart');
-        }
+      if (meResponse.status === 401) {
+        router.replace('/auth/login');
+        return;
       }
 
-      const { data: productsData, error: productsError } =
-        await supabase
-          .from('products')
-          .select('*')
-          .eq('active', true)
-          .order('created_at', { ascending: true });
+      const me = await meResponse.json();
+
+      if (!meResponse.ok) {
+        throw new Error(me?.error || 'Impossible de lire ton compte.');
+      }
+
+      setSoldeCents(toCents(me.user.solde_compte));
+
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: true });
 
       if (productsError) throw productsError;
 
       setProducts(productsData || []);
-
-      const { data: userData, error: userError } =
-        await supabase
-          .from('users')
-          .select('solde_compte')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (userError) throw userError;
-
-      const balance = Number(userData?.solde_compte || 0);
-
-      setSolde(balance);
-      localStorage.setItem('solde_compte', String(balance));
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err?.message || 'Impossible de charger le panier.');
+      setError(
+        err instanceof Error ? err.message : 'Impossible de charger le panier.'
+      );
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
 
-  function saveCart(nextCart: CartItem[]) {
-    setCart(nextCart);
-    localStorage.setItem('popotte_cart', JSON.stringify(nextCart));
-  }
+  useEffect(() => {
+    // Passer par une fonction asynchrone locale : un appel direct dans le
+    // corps de l'effet déclenche une cascade de rendus.
+    const charger = async () => {
+      await loadData();
+    };
+
+    charger();
+  }, [loadData]);
+
+  // Un produit désactivé ou supprimé disparaissait du panier sans un mot,
+  // et le stockage gardait la ligne fantôme.
+  useEffect(() => {
+    if (loading || products.length === 0 || cart.length === 0) return;
+
+    const orphans = cart.filter(
+      (line) => !products.some((product) => product.id === line.id)
+    );
+
+    if (orphans.length === 0) return;
+
+    saveCart(cart.filter((line: CartLine) => !orphans.includes(line)));
+
+    // On synchronise ici un système extérieur (le stockage du navigateur)
+    // vers l'affichage : c'est le cas d'usage prévu pour un effet.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotice(
+      orphans.length === 1
+        ? "Un produit n'est plus disponible, il a été retiré de ton panier."
+        : `${orphans.length} produits ne sont plus disponibles, ils ont été retirés de ton panier.`
+    );
+  }, [cart, products, loading, saveCart]);
 
   function updateQuantity(productId: string, quantity: number) {
-    const product = products.find(p => p.id === productId);
+    const product = products.find((p) => p.id === productId);
 
     if (!product) return;
 
     if (quantity <= 0) {
-      saveCart(cart.filter(item => item.id !== productId));
+      setError('');
+      saveCart(cart.filter((line) => line.id !== productId));
       return;
     }
 
@@ -121,73 +128,59 @@ export default function CartPage() {
     setError('');
 
     saveCart(
-      cart.map(item =>
-        item.id === productId
-          ? { ...item, quantite: quantity }
-          : item
+      cart.map((line) =>
+        line.id === productId ? { ...line, quantite: quantity } : line
       )
     );
   }
 
   const cartItems = useMemo(() => {
     return cart
-      .map(item => {
-        const product = products.find(p => p.id === item.id);
-
-        if (!product) return null;
-
-        return {
-          product,
-          quantity: item.quantite,
-        };
+      .map((line) => {
+        const product = products.find((p) => p.id === line.id);
+        return product ? { product, quantity: line.quantite } : null;
       })
-      .filter(Boolean) as {
-        product: Product;
-        quantity: number;
-      }[];
+      .filter((item): item is { product: Product; quantity: number } =>
+        Boolean(item)
+      );
   }, [cart, products]);
 
-  const total = useMemo(() => {
-    return cartItems.reduce(
-      (sum, item) =>
-        sum + Number(item.product.prix) * item.quantity,
-      0
-    );
-  }, [cartItems]);
+  const totalCents = useMemo(
+    () =>
+      cartItems.reduce(
+        (sum, item) => sum + toCents(item.product.prix) * item.quantity,
+        0
+      ),
+    [cartItems]
+  );
 
-  const totalItems = useMemo(() => {
-    return cartItems.reduce(
-      (sum, item) => sum + item.quantity,
-      0
-    );
-  }, [cartItems]);
+  const totalItems = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
+    [cartItems]
+  );
 
   async function handleOrder() {
-    const userId = localStorage.getItem('user_id');
-
-    if (!userId) {
-      router.replace('/auth/login');
-      return;
-    }
-
+    if (orderInFlight.current) return;
     if (cartItems.length === 0) {
       setError('Ton panier est vide.');
       return;
     }
 
+    orderInFlight.current = true;
     setOrdering(true);
     setError('');
-    setSuccess(false);
 
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // Si la requête part deux fois, le serveur rejoue la même
+          // réponse au lieu de passer une deuxième commande.
+          'x-idempotency-key': crypto.randomUUID(),
         },
         body: JSON.stringify({
-          user_id: userId,
-          items: cartItems.map(item => ({
+          items: cartItems.map((item) => ({
             product_id: item.product.id,
             quantite: item.quantity,
           })),
@@ -196,34 +189,39 @@ export default function CartPage() {
 
       const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(
-          result?.error || 'Impossible de valider la commande.'
-        );
+      if (response.status === 401) {
+        router.replace('/auth/login');
+        return;
       }
 
-      const nouveauSolde = Number(result.nouveauSolde ?? 0);
-      const montantDette = Number(result.montantDette ?? 0);
+      if (!response.ok) {
+        throw new Error(result?.error || 'Impossible de valider la commande.');
+      }
 
-      setSolde(nouveauSolde);
-      setDette(montantDette);
+      // Le montant vient de la réponse : la fenêtre de confirmation
+      // recalculait le total à partir d'un panier déjà vidé et affichait
+      // donc toujours « Total : 0.00 € ».
+      setSummary({
+        totalCents: toCents(result.total),
+        detteCents: toCents(result.montantDette),
+      });
 
-      localStorage.setItem(
-        'solde_compte',
-        String(nouveauSolde)
-      );
+      setSoldeCents(toCents(result.nouveauSolde));
 
-      localStorage.removeItem('popotte_cart');
-      setCart([]);
+      clearCart();
+      setNotice('');
 
-      setSuccess(true);
-    } catch (err: any) {
+      // Les stocks affichés viennent de changer.
+      loadData();
+    } catch (err) {
       console.error(err);
       setError(
-        err?.message ||
-        'Une erreur est survenue lors de la commande.'
+        err instanceof Error
+          ? err.message
+          : 'Une erreur est survenue lors de la commande.'
       );
     } finally {
+      orderInFlight.current = false;
       setOrdering(false);
     }
   }
@@ -232,7 +230,9 @@ export default function CartPage() {
     return (
       <main className="min-h-screen bg-[#090a0d] text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="text-5xl mb-4">🛒</div>
+          <div className="text-5xl mb-4" aria-hidden="true">
+            🛒
+          </div>
           <p className="text-gray-400">Chargement du panier...</p>
         </div>
       </main>
@@ -241,10 +241,8 @@ export default function CartPage() {
 
   return (
     <main className="min-h-screen bg-[#090a0d] text-white pb-10">
-
       <header className="sticky top-0 z-40 bg-[#101114]/95 backdrop-blur-md border-b border-white/10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-
           <Link
             href="/dashboard"
             className="text-gray-300 hover:text-white font-medium"
@@ -252,51 +250,54 @@ export default function CartPage() {
             ← Retour
           </Link>
 
-          <h1 className="text-xl md:text-2xl font-black">
-            🛒 panier
-          </h1>
+          <h1 className="text-xl md:text-2xl font-black">🛒 panier</h1>
 
           <div className="text-sm text-gray-400">
-            {totalItems} article{totalItems > 1 ? 's' : ''}
+            {totalItems} article{totalItems >= 2 ? 's' : ''}
           </div>
-
         </div>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-5">
-
         <section className="rounded-3xl border border-white/10 bg-[#191b21] p-5 mb-6">
           <div className="flex items-center justify-between">
-            <span className="text-gray-400">
-              Solde disponible
-            </span>
+            <span className="text-gray-400">Solde disponible</span>
 
             <strong
               className={`text-2xl font-black ${
-                solde < 0
-                  ? 'text-red-400'
-                  : 'text-emerald-400'
+                soldeCents < 0 ? 'text-red-400' : 'text-emerald-400'
               }`}
             >
-              {solde.toFixed(2)} €
+              {formatEuros(soldeCents)}
             </strong>
           </div>
         </section>
 
         {error && (
-          <div className="mb-6 bg-red-950/40 border border-red-500/40 text-red-200 px-5 py-4 rounded-2xl">
+          <div
+            role="alert"
+            className="mb-6 bg-red-950/40 border border-red-500/40 text-red-200 px-5 py-4 rounded-2xl"
+          >
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-6 bg-amber-950/40 border border-amber-500/40 text-amber-200 px-5 py-4 rounded-2xl"
+          >
+            {notice}
           </div>
         )}
 
         {cartItems.length === 0 ? (
           <div className="text-center py-24">
+            <div className="text-7xl mb-6" aria-hidden="true">
+              🛒
+            </div>
 
-            <div className="text-7xl mb-6">🛒</div>
-
-            <h2 className="text-2xl font-black mb-3">
-              Ton panier est vide
-            </h2>
+            <h2 className="text-2xl font-black mb-3">Ton panier est vide</h2>
 
             <p className="text-gray-400 mb-8">
               Ajoute des produits depuis le catalogue.
@@ -308,113 +309,86 @@ export default function CartPage() {
             >
               Voir les produits
             </Link>
-
           </div>
         ) : (
-
           <>
             <div className="space-y-4">
-
               {cartItems.map(({ product, quantity }) => (
-
                 <article
                   key={product.id}
                   className="bg-[#191b21] border border-white/10 rounded-3xl p-5"
                 >
-
                   <div className="flex flex-col gap-5">
-
                     <div className="flex justify-between gap-4">
-
                       <div>
-                        <h2 className="text-xl font-black">
-                          {product.nom}
-                        </h2>
+                        <h2 className="text-xl font-black">{product.nom}</h2>
 
                         <p className="text-gray-400 text-sm mt-1">
                           {product.description || product.nom}
                         </p>
 
                         <p className="text-emerald-400 font-black text-xl mt-3">
-                          {Number(product.prix).toFixed(2)} €
+                          {formatEuros(toCents(product.prix))}
                         </p>
                       </div>
 
                       <strong className="text-xl font-black">
-                        {(Number(product.prix) * quantity).toFixed(2)} €
+                        {formatEuros(toCents(product.prix) * quantity)}
                       </strong>
-
                     </div>
 
                     <div className="flex items-center justify-between">
-
                       <button
                         type="button"
                         disabled={ordering}
-                        onClick={() =>
-                          updateQuantity(product.id, quantity - 1)
-                        }
+                        aria-label={`Retirer un ${product.nom}`}
+                        onClick={() => updateQuantity(product.id, quantity - 1)}
                         className="w-12 h-12 rounded-xl bg-[#292c33] font-black text-xl"
                       >
                         −
                       </button>
 
                       <span className="text-xl font-black">
+                        <span className="sr-only">Quantité : </span>
                         {quantity}
                       </span>
 
                       <button
                         type="button"
-                        disabled={
-                          ordering ||
-                          quantity >= product.stock_quantity
-                        }
-                        onClick={() =>
-                          updateQuantity(product.id, quantity + 1)
-                        }
+                        disabled={ordering || quantity >= product.stock_quantity}
+                        aria-label={`Ajouter un ${product.nom}`}
+                        onClick={() => updateQuantity(product.id, quantity + 1)}
                         className="w-12 h-12 rounded-xl bg-blue-600 font-black text-xl disabled:opacity-40"
                       >
                         +
                       </button>
-
                     </div>
 
                     <button
                       type="button"
                       disabled={ordering}
-                      onClick={() =>
-                        updateQuantity(product.id, 0)
-                      }
+                      onClick={() => updateQuantity(product.id, 0)}
                       className="text-red-400 text-sm font-bold text-left"
                     >
-                      Supprimer
+                      Supprimer {product.nom}
                     </button>
-
                   </div>
-
                 </article>
-
               ))}
-
             </div>
 
             <section className="mt-8 bg-[#191b21] border border-white/10 rounded-3xl p-5">
-
               <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-lg">
-                  Total
-                </span>
+                <span className="text-gray-400 text-lg">Total</span>
 
                 <span className="text-3xl font-black text-emerald-400">
-                  {total.toFixed(2)} €
+                  {formatEuros(totalCents)}
                 </span>
               </div>
 
-              {solde < total && (
+              {soldeCents < totalCents && (
                 <div className="mt-5 bg-red-950/40 border border-red-500/30 rounded-2xl p-4">
-                  <p className="text-red-300 font-black">
-                    ⚠️ Solde insuffisant
-                  </p>
+                  <p className="text-red-300 font-black">⚠️ Solde insuffisant</p>
 
                   <p className="text-red-200 text-sm mt-2">
                     La commande sera quand même acceptée.
@@ -423,7 +397,7 @@ export default function CartPage() {
                   <p className="text-red-200 text-sm mt-2">
                     Dette après commande :{' '}
                     <strong>
-                      {(total - solde).toFixed(2)} €
+                      {formatEuros(totalCents - Math.max(soldeCents, 0))}
                     </strong>
                   </p>
                 </div>
@@ -437,7 +411,7 @@ export default function CartPage() {
               >
                 {ordering
                   ? 'Commande en cours...'
-                  : `Valider ma commande — ${total.toFixed(2)} €`}
+                  : `Valider ma commande — ${formatEuros(totalCents)}`}
               </button>
 
               <Link
@@ -446,56 +420,53 @@ export default function CartPage() {
               >
                 ← Continuer mes achats
               </Link>
-
             </section>
           </>
         )}
-
       </div>
 
-      {success && (
+      {summary && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center px-4">
-
-          <div className="w-full max-w-md bg-[#191b21] border border-emerald-500/30 rounded-3xl p-7 text-center">
-
-            <div className="text-6xl mb-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirmation-titre"
+            className="w-full max-w-md bg-[#191b21] border border-emerald-500/30 rounded-3xl p-7 text-center"
+          >
+            <div className="text-6xl mb-4" aria-hidden="true">
               ✅
             </div>
 
-            <p className="text-emerald-400 font-black">
-              COMMANDE CONFIRMÉE
-            </p>
+            <p className="text-emerald-400 font-black">COMMANDE CONFIRMÉE</p>
 
-            <h2 className="text-2xl font-black mt-2">
+            <h2 id="confirmation-titre" className="text-2xl font-black mt-2">
               Merci pour ta commande !
             </h2>
 
             <p className="text-gray-400 mt-4">
-              Total : {total.toFixed(2)} €
+              Total : {formatEuros(summary.totalCents)}
             </p>
 
-            {dette > 0 && (
+            {summary.detteCents > 0 && (
               <p className="text-red-400 font-black mt-3">
-                Dette créée : {dette.toFixed(2)} €
+                Dette créée : {formatEuros(summary.detteCents)}
               </p>
             )}
 
             <button
               type="button"
+              autoFocus
               onClick={() => {
-                setSuccess(false);
+                setSummary(null);
                 router.push('/dashboard');
               }}
               className="w-full mt-6 bg-blue-600 hover:bg-blue-500 px-6 py-4 rounded-2xl font-black"
             >
               Continuer
             </button>
-
           </div>
-
         </div>
       )}
-
     </main>
   );
 }
