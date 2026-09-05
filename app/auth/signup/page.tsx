@@ -110,7 +110,7 @@ export default function SignupPage() {
                 placeholder="Comment on t’appelle"
                 autoComplete="username"
                 autoFocus
-                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition"
                 required
               />
             </div>
@@ -131,7 +131,7 @@ export default function SignupPage() {
                 placeholder="8 caractères minimum"
                 minLength={8}
                 autoComplete="new-password"
-                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition"
                 required
               />
             </div>
@@ -151,7 +151,7 @@ export default function SignupPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Le même, pour être sûr"
                 autoComplete="new-password"
-                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition"
                 required
               />
             </div>
@@ -168,7 +168,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 py-4 rounded-xl font-black text-lg transition"
+              className="w-full bg-white hover:bg-gray-200 text-black active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 py-4 rounded-xl font-black text-lg transition"
             >
               {loading ? 'Création du compte...' : 'Créer mon compte'}
             </button>
@@ -179,7 +179,7 @@ export default function SignupPage() {
               Déjà inscrit ?{' '}
               <Link
                 href="/auth/login"
-                className="text-blue-400 hover:text-blue-300 font-black"
+                className="text-gray-300 hover:text-white font-black"
               >
                 Se connecter
               </Link>
