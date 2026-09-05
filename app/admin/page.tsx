@@ -97,10 +97,10 @@ const REFRESH_INTERVAL_MS = 30000;
 const CARD = 'bg-[#14161b] border border-white/10 rounded-3xl';
 const SUB_CARD = 'bg-[#0d0f13] border border-white/10 rounded-xl';
 const FIELD =
-  'w-full px-4 py-3 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition';
+  'w-full px-4 py-3 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition';
 const BTN =
   'rounded-xl px-4 py-3 font-black text-sm transition disabled:bg-white/10 disabled:text-gray-500';
-const BTN_PRIMARY = `${BTN} bg-blue-600 hover:bg-blue-500 text-white`;
+const BTN_PRIMARY = `${BTN} bg-white hover:bg-gray-200 text-black`;
 const BTN_NEUTRAL = `${BTN} bg-white/5 hover:bg-white/10 border border-white/10 text-white`;
 const BTN_DANGER = `${BTN} border border-white/10 text-red-400 hover:bg-red-500/10`;
 
@@ -838,7 +838,7 @@ export default function AdminPage() {
             <div className="mt-7 pt-6 border-t border-white/10 text-center">
               <Link
                 href="/dashboard"
-                className="text-blue-400 hover:text-blue-300 font-black text-sm"
+                className="text-gray-300 hover:text-white font-black text-sm"
               >
                 Retour au tableau de bord
               </Link>
@@ -863,7 +863,7 @@ export default function AdminPage() {
 
           <Link
             href="/dashboard"
-            className="text-blue-400 hover:text-blue-300 font-black text-sm"
+            className="text-gray-300 hover:text-white font-black text-sm"
           >
             Retour au tableau de bord
           </Link>
@@ -1384,7 +1384,7 @@ export default function AdminPage() {
                         } le produit ${product.nom}`}
                         className={
                           product.active
-                            ? `${BTN} bg-blue-600 hover:bg-blue-500 text-white`
+                            ? `${BTN} bg-white hover:bg-gray-200 text-black`
                             : `${BTN} bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400`
                         }
                       >
@@ -1674,7 +1674,7 @@ function TabButton({
       onClick={onClick}
       className={`px-4 py-2.5 rounded-xl font-black text-sm border transition ${
         active
-          ? 'bg-white/10 border-white/10 text-blue-400'
+          ? 'bg-white/10 border-white/10 text-white'
           : 'bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
       }`}
     >
