@@ -38,11 +38,6 @@ export default function LoginPage() {
         );
       }
 
-      // L'identité vit maintenant dans un cookie de session signé, posé par
-      // le serveur. Plus rien d'identifiant ne transite par le localStorage :
-      // il suffisait d'y écrire l'identifiant d'un autre pour commander à sa
-      // place. Seul reste ce drapeau d'affichage, sans valeur de sécurité.
-      localStorage.setItem('popotte_show_respect', '1');
 
       router.push('/dashboard');
       router.refresh();
@@ -57,12 +52,9 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#090a0d] text-white px-4 py-8">
-
-      <div className="w-full max-w-md mx-auto">
-
-        <div className="text-center mb-8">
-
+    <main className="min-h-screen bg-[#090a0d] text-white px-4 py-10 flex items-center">
+      <div className="w-full max-w-sm mx-auto">
+        <div className="text-center mb-10">
           <h1
             className="text-5xl leading-none text-white"
             style={{
@@ -76,64 +68,60 @@ export default function LoginPage() {
           <p className="text-gray-400 font-bold text-[11px] tracking-[0.18em] mt-3">
             BTA SAINT-MÉDARD-EN-JALLES
           </p>
-
         </div>
 
-        <div className="bg-[#191b21] border border-white/10 rounded-3xl p-5 md:p-7 shadow-2xl">
+        <div className="bg-[#14161b] border border-white/10 rounded-3xl p-6">
+          <h2 className="text-2xl font-black">Connexion</h2>
 
-          <h2 className="text-2xl font-black">
-            Connexion
-          </h2>
-
-          <p className="text-gray-500 text-sm mt-1 mb-6">
-            Accédez à votre espace Popotte
+          <p className="text-gray-400 text-sm mt-1 mb-7">
+            Ton espace Popotte, en deux champs.
           </p>
 
-          <form
-            onSubmit={handleLogin}
-            className="space-y-5"
-          >
-
-            <div>
-
-              <label className="block text-sm font-black text-gray-300 mb-2">
+          <form onSubmit={handleLogin} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="username"
+                className="text-sm font-black text-gray-300"
+              >
                 Nom
               </label>
 
               <input
+                id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Votre nom"
+                placeholder="Comment on t’appelle"
                 autoComplete="username"
-                className="w-full px-4 py-3.5 bg-[#101114] border border-white/10 rounded-xl text-white placeholder-gray-600 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
                 required
               />
-
             </div>
 
-            <div>
-
-              <label className="block text-sm font-black text-gray-300 mb-2">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="password"
+                className="text-sm font-black text-gray-300"
+              >
                 Mot de passe
               </label>
 
               <input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Votre mot de passe"
+                placeholder="Ton mot de passe"
                 autoComplete="current-password"
-                className="w-full px-4 py-3.5 bg-[#101114] border border-white/10 rounded-xl text-white placeholder-gray-600 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
                 required
               />
-
             </div>
 
             {error && (
               <div
                 role="alert"
-                className="bg-red-950/50 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm font-medium"
+                className="bg-red-950/40 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm"
               >
                 {error}
               </div>
@@ -142,34 +130,25 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-gray-700 py-4 rounded-xl font-black text-lg transition-all"
+              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 py-4 rounded-xl font-black text-lg transition"
             >
-              {loading
-                ? 'Connexion...'
-                : 'Se connecter'}
+              {loading ? 'Connexion...' : 'Se connecter'}
             </button>
-
           </form>
 
-          <div className="mt-6 pt-6 border-t border-white/10 text-center">
-
-            <p className="text-gray-500 text-sm">
-              Pas encore inscrit ?
+          <div className="mt-7 pt-6 border-t border-white/10 text-center">
+            <p className="text-gray-400 text-sm">
+              Pas encore inscrit ?{' '}
+              <Link
+                href="/auth/signup"
+                className="text-blue-400 hover:text-blue-300 font-black"
+              >
+                Créer mon compte
+              </Link>
             </p>
-
-            <Link
-              href="/auth/signup"
-              className="inline-block mt-1 text-blue-400 hover:text-blue-300 font-black"
-            >
-              Créer mon compte
-            </Link>
-
           </div>
-
         </div>
-
       </div>
-
     </main>
   );
 }

@@ -25,13 +25,16 @@ export async function GET(request: NextRequest) {
       supabaseAdmin
         .from('users')
         .select('id, username, email, solde_compte, is_admin, created_at')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false }),
 
-      // L'onglet « Utilisateurs supprimés » restait vide : l'API n'a jamais
-      // renvoyé cette table, alors que la suppression y archive bien le compte.
+      // Les comptes supprimés restent dans la table users, marqués par
+      // deleted_at : les supprimer pour de bon échouait dès que la personne
+      // avait passé une commande, et aurait effacé l'historique des ventes.
       supabaseAdmin
-        .from('deleted_users')
-        .select('id, original_user_id, username, email, solde_compte, created_at, deleted_at')
+        .from('users')
+        .select('id, username, email, solde_compte, created_at, deleted_at')
+        .not('deleted_at', 'is', null)
         .order('deleted_at', { ascending: false }),
 
       supabaseAdmin
@@ -67,8 +70,8 @@ export async function GET(request: NextRequest) {
     if (allOrderTotalsError) throw allOrderTotalsError;
 
     if (deletedUsersError) {
-      // La table peut ne pas exister si la migration n'a pas été passée.
-      console.warn('Lecture de deleted_users impossible:', deletedUsersError);
+      // La colonne deleted_at n'existe pas si la migration 0002 n'est pas passée.
+      console.warn('Lecture des comptes supprimés impossible:', deletedUsersError);
     }
 
     const dettes = (users || []).reduce((sum, user) => {
@@ -89,7 +92,10 @@ export async function GET(request: NextRequest) {
       {
         products: products || [],
         users: users || [],
-        deletedUsers: deletedUsers || [],
+        deletedUsers: (deletedUsers || []).map((user) => ({
+          ...user,
+          original_user_id: user.id,
+        })),
         orders: orders || [],
         orderItems: orderItems || [],
         transactions: transactions || [],
@@ -332,8 +338,13 @@ export async function POST(request: NextRequest) {
     /*
      * Suppression d'un compte.
      *
-     * Le compte est d'abord archivé dans deleted_users pour garder le nom
-     * dans l'historique des commandes, puis retiré de la liste active.
+     * La ligne est conservée et marquée supprimée, pas effacée. Effacer
+     * échouait dès que la personne avait passé une commande (orders et
+     * transactions pointent vers elle) et aurait fait disparaître son nom
+     * de l'historique des ventes.
+     *
+     * Un compte en dette ne peut pas être supprimé : l'argent dû
+     * disparaîtrait des totaux sans que personne ne l'ait réglé.
      */
     if (action === 'delete_user') {
       const id = String(body.id || '').trim();
@@ -347,68 +358,48 @@ export async function POST(request: NextRequest) {
 
       const { data: user, error: userError } = await supabaseAdmin
         .from('users')
-        .select('id, username, email, solde_compte, created_at')
+        .select('id, username, solde_compte, deleted_at')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (userError || !user) {
+      if (userError) throw userError;
+
+      if (!user) {
         return NextResponse.json(
           { error: 'Utilisateur introuvable.' },
           { status: 404 }
         );
       }
 
-      const { error: archiveError } = await supabaseAdmin
-        .from('deleted_users')
-        .insert({
-          original_user_id: user.id,
-          username: user.username,
-          email: user.email,
-          solde_compte: user.solde_compte,
-          created_at: user.created_at,
-          deleted_at: new Date().toISOString(),
-        });
+      if (user.deleted_at) {
+        return NextResponse.json(
+          { error: 'Ce compte est déjà supprimé.' },
+          { status: 400 }
+        );
+      }
 
-      if (archiveError) {
-        console.error('Archivage utilisateur supprimé:', archiveError);
+      const dette = Math.max(-Number(user.solde_compte || 0), 0);
 
+      if (dette > 0) {
         return NextResponse.json(
           {
-            error:
-              "La table deleted_users n'existe pas encore. Passe la migration supabase/migrations/0001_popotte_hardening.sql avant de supprimer un compte.",
+            error: `${user.username} doit encore ${dette.toFixed(2)} €. Règle la dette avant de supprimer le compte.`,
           },
-          { status: 500 }
+          { status: 400 }
         );
       }
 
-      const { error: deleteError } = await supabaseAdmin
+      const { error: updateError } = await supabaseAdmin
         .from('users')
-        .delete()
+        .update({ deleted_at: new Date().toISOString(), is_admin: false })
         .eq('id', id);
 
-      if (deleteError) {
-        // On retire l'archive créée juste avant pour éviter un doublon.
-        await supabaseAdmin
-          .from('deleted_users')
-          .delete()
-          .eq('original_user_id', id);
-
-        throw deleteError;
-      }
-
-      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
-
-      if (authError) {
-        console.warn(
-          'Compte Auth non supprimé après suppression users:',
-          authError
-        );
-      }
+      if (updateError) throw updateError;
 
       return NextResponse.json({
         ok: true,
         username: user.username,
-        message: 'Compte archivé puis supprimé.',
+        message: 'Compte supprimé. Son historique de commandes est conservé.',
       });
     }
 

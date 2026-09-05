@@ -17,16 +17,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const grade = String(body?.grade || '').trim();
     const nom = String(body?.nom || '').trim();
     const password = String(body?.password || '');
-
-    if (!grade) {
-      return NextResponse.json(
-        { error: 'Le grade est obligatoire.' },
-        { status: 400 }
-      );
-    }
 
     if (!nom) {
       return NextResponse.json(
@@ -71,12 +63,11 @@ export async function POST(request: NextRequest) {
       .insert({
         username: nom,
         nom: nom,
-        grade: grade,
         password_hash: await hashPassword(password),
         solde_compte: 0,
         is_admin: false,
       })
-      .select('id, username, nom, grade, email, solde_compte, is_admin')
+      .select('id, username, nom, email, solde_compte, is_admin')
       .single();
 
     if (insertError) {

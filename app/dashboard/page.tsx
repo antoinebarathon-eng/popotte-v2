@@ -57,7 +57,6 @@ export default function DashboardPage() {
   const [cart, saveCart] = useCart();
 
   const [username, setUsername] = useState('');
-  const [grade, setGrade] = useState('');
   const [balanceCents, setBalanceCents] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -65,8 +64,6 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const [showRespect, setShowRespect] = useState(false);
 
   // Le solde et la dette venaient du localStorage, figés à la connexion :
   // après un remboursement enregistré par l'admin, l'utilisateur voyait
@@ -87,7 +84,6 @@ export default function DashboardPage() {
       }
 
       setUsername(data.user.nom || data.user.username || '');
-      setGrade(data.user.grade || '');
       setBalanceCents(toCents(data.user.solde_compte));
       setIsAdmin(Boolean(data.user.is_admin));
     } catch (err) {
@@ -135,24 +131,6 @@ export default function DashboardPage() {
 
     charger();
   }, [loadProfile, loadProducts]);
-
-  // La connexion écrivait « popotte_show_respect » et le tableau de bord
-  // lisait « popotte_respect_shown » : le message ne s'affichait qu'une
-  // seule fois par navigateur. Même clé des deux côtés, et on la consomme.
-  useEffect(() => {
-    if (!grade) return;
-    if (localStorage.getItem('popotte_show_respect') !== '1') return;
-
-    localStorage.removeItem('popotte_show_respect');
-
-    // Lecture d'un système extérieur (le stockage) vers l'affichage.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowRespect(true);
-
-    const timer = setTimeout(() => setShowRespect(false), 3000);
-
-    return () => clearTimeout(timer);
-  }, [grade]);
 
   const getQuantity = useCallback(
     (productId: string) =>
@@ -214,18 +192,6 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#090a0d] text-white pb-10">
-      {showRespect && grade && (
-        <div className="fixed top-5 left-4 right-4 z-[100] flex justify-center pointer-events-none">
-          <div className="w-full max-w-md bg-[#191b21] border border-blue-500/40 rounded-2xl px-5 py-4 shadow-2xl shadow-blue-900/30">
-            <p className="text-blue-400 font-black text-lg">
-              Mes respects {grade}
-            </p>
-
-            <p className="text-gray-300 text-sm mt-1">Comment allez vous ?</p>
-          </div>
-        </div>
-      )}
-
       <header className="sticky top-0 z-40 bg-[#090a0d]/95 backdrop-blur-md border-b border-white/10">
         <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between">
           <div>
@@ -239,7 +205,7 @@ export default function DashboardPage() {
               POPOTTE
             </h1>
 
-            <p className="text-gray-500 text-[10px] font-black tracking-[0.18em] mt-2">
+            <p className="text-gray-400 text-[10px] font-black tracking-[0.18em] mt-2">
               BTA SAINT-MÉDARD-EN-JALLES
             </p>
           </div>
@@ -250,7 +216,7 @@ export default function DashboardPage() {
               <Link
                 href="/admin"
                 aria-label="Administration"
-                className="w-12 h-12 rounded-2xl bg-[#191b21] border border-white/10 flex items-center justify-center text-xl active:scale-95 transition"
+                className="w-12 h-12 rounded-xl bg-[#14161b] border border-white/10 flex items-center justify-center text-xl active:scale-95 transition"
               >
                 <span aria-hidden="true">⚙️</span>
               </Link>
@@ -260,7 +226,7 @@ export default function DashboardPage() {
               type="button"
               onClick={handleLogout}
               aria-label="Se déconnecter"
-              className="w-12 h-12 rounded-2xl bg-[#191b21] border border-white/10 flex items-center justify-center text-xl active:scale-95 transition"
+              className="w-12 h-12 rounded-xl bg-[#14161b] border border-white/10 flex items-center justify-center text-xl active:scale-95 transition"
             >
               <span aria-hidden="true">⏻</span>
             </button>
@@ -269,7 +235,7 @@ export default function DashboardPage() {
               type="button"
               onClick={() => router.push('/cart')}
               aria-label={`Voir le panier, ${cartCount} ${plural(cartCount, 'article', 'articles')}`}
-              className="relative w-12 h-12 rounded-2xl bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-xl active:scale-95 transition"
+              className="relative w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-xl active:scale-95 transition"
             >
               <span aria-hidden="true">🛒</span>
 
@@ -289,23 +255,15 @@ export default function DashboardPage() {
       <div className="max-w-5xl mx-auto px-5">
         <section className="mt-5 bg-[#14161b] border border-white/10 rounded-3xl p-5">
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-gray-400 text-sm">Bonjour</p>
+            <div className="min-w-0 flex flex-col gap-1">
+              <p className="text-gray-400 text-xs">Bonjour</p>
 
-              <p className="text-xl font-black truncate">
+              <p className="text-lg font-black truncate">
                 {username || 'Utilisateur'}
               </p>
-
-              {grade && (
-                <div className="mt-3 inline-flex px-3 py-1.5 rounded-xl bg-blue-600/10 border border-blue-500/30">
-                  <span className="text-blue-400 text-xs font-black">
-                    {grade}
-                  </span>
-                </div>
-              )}
             </div>
 
-            <div className="text-right border-l border-white/10 pl-5">
+            <div className="text-right border-l border-white/10 pl-5 flex flex-col gap-1">
               <p className="text-gray-400 text-xs">
                 {debtCents > 0 ? 'Ma dette' : 'Mon solde'}
               </p>
@@ -313,28 +271,18 @@ export default function DashboardPage() {
               {/* La dette s'affichait en vert, comme un solde positif. */}
               <p
                 className={`text-2xl font-black ${
-                  debtCents > 0 ? 'text-red-400' : 'text-emerald-400'
+                  debtCents > 0 ? 'text-red-400' : 'text-white'
                 }`}
               >
                 {formatEuros(debtCents > 0 ? debtCents : balanceCents)}
               </p>
-
-              <span
-                className={`inline-block mt-1 px-2 py-1 rounded-full text-[9px] font-black uppercase ${
-                  debtCents > 0
-                    ? 'bg-red-500/10 text-red-400'
-                    : 'bg-emerald-500/10 text-emerald-400'
-                }`}
-              >
-                {debtCents > 0 ? 'À régler' : 'À jour'}
-              </span>
             </div>
           </div>
         </section>
 
-        <section className="mt-7">
-          <h2 className="text-xs uppercase tracking-[0.2em] font-black text-gray-400 mb-3">
-            NOS CATÉGORIES
+        <section className="mt-7 flex flex-col gap-3">
+          <h2 className="text-xs uppercase tracking-[0.2em] font-black text-gray-400">
+            Catégories
           </h2>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
@@ -342,13 +290,13 @@ export default function DashboardPage() {
               type="button"
               onClick={() => setSelectedCategory('tous')}
               aria-pressed={selectedCategory === 'tous'}
-              className={`shrink-0 px-5 py-3 rounded-2xl font-black text-sm transition ${
+              className={`shrink-0 px-5 py-3 rounded-xl bg-[#14161b] border font-black text-sm transition ${
                 selectedCategory === 'tous'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-[#191b21] text-gray-300 border border-white/10'
+                  ? 'border-blue-500/40 text-blue-400'
+                  : 'border-white/10 text-gray-400'
               }`}
             >
-              ▦ Tous
+              Tous
             </button>
 
             {Object.entries(categoryLabels).map(([key, label]) => (
@@ -357,10 +305,10 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => setSelectedCategory(key)}
                 aria-pressed={selectedCategory === key}
-                className={`shrink-0 px-5 py-3 rounded-2xl font-black text-sm transition ${
+                className={`shrink-0 px-5 py-3 rounded-xl bg-[#14161b] border font-black text-sm transition ${
                   selectedCategory === key
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-[#191b21] text-gray-300 border border-white/10'
+                    ? 'border-blue-500/40 text-blue-400'
+                    : 'border-white/10 text-gray-400'
                 }`}
               >
                 {label}
@@ -369,39 +317,21 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="mt-7">
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <h2
-                className="text-3xl text-white"
-                style={{
-                  fontFamily:
-                    'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
-                }}
-              >
-                NOS PRODUITS
-              </h2>
+        <section className="mt-7 flex flex-col gap-4">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="text-xs uppercase tracking-[0.2em] font-black text-gray-400">
+              Produits
+            </h2>
 
-              <p className="text-gray-400 text-sm mt-1">
-                {filteredProducts.length}{' '}
-                {plural(filteredProducts.length, 'produit', 'produits')}{' '}
-                {plural(filteredProducts.length, 'disponible', 'disponibles')}
-              </p>
-            </div>
-
-            {cartCount > 0 && (
-              <button
-                type="button"
-                onClick={() => router.push('/cart')}
-                className="text-blue-400 font-black text-sm"
-              >
-                Voir le panier →
-              </button>
-            )}
+            <p className="text-gray-400 text-xs shrink-0">
+              {filteredProducts.length}{' '}
+              {plural(filteredProducts.length, 'produit', 'produits')}{' '}
+              {plural(filteredProducts.length, 'disponible', 'disponibles')}
+            </p>
           </div>
 
           {loading && (
-            <div className="text-center py-16 text-gray-400">
+            <div className="text-center py-16 text-gray-400 text-sm">
               Chargement des produits...
             </div>
           )}
@@ -409,14 +339,14 @@ export default function DashboardPage() {
           {error && (
             <div
               role="alert"
-              className="bg-red-950/50 border border-red-500/30 text-red-300 rounded-2xl p-4 text-sm"
+              className="bg-red-950/40 border border-red-500/40 text-red-300 rounded-xl px-4 py-3 text-sm"
             >
               {error}
             </div>
           )}
 
           {!loading && !error && filteredProducts.length === 0 && (
-            <div className="bg-[#14161b] border border-white/10 rounded-3xl p-8 text-center text-gray-400">
+            <div className="bg-[#14161b] border border-white/10 rounded-3xl p-8 text-center text-gray-400 text-sm">
               Aucun produit dans cette catégorie.
             </div>
           )}
@@ -429,20 +359,20 @@ export default function DashboardPage() {
               return (
                 <article
                   key={product.id}
-                  className="bg-[#14161b] border border-white/10 rounded-3xl p-5 overflow-hidden"
+                  className="bg-[#14161b] border border-white/10 rounded-3xl p-5 overflow-hidden flex flex-col gap-4"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-16 h-16 shrink-0 rounded-2xl bg-[#101114] flex items-center justify-center text-3xl">
+                    <div className="w-14 h-14 shrink-0 rounded-xl bg-[#0d0f13] flex items-center justify-center text-2xl">
                       {product.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={product.image_url}
                           alt=""
-                          width={64}
-                          height={64}
+                          width={56}
+                          height={56}
                           loading="lazy"
                           decoding="async"
-                          className="w-full h-full object-cover rounded-2xl"
+                          className="w-full h-full object-cover rounded-xl"
                         />
                       ) : (
                         <span aria-hidden="true">
@@ -451,21 +381,21 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    <div className="min-w-0">
-                      <h3 className="text-xl font-black">{product.nom}</h3>
+                    <div className="min-w-0 flex flex-col gap-1">
+                      <h3 className="text-lg font-black">{product.nom}</h3>
 
-                      <p className="text-gray-400 text-sm mt-1">
+                      <p className="text-gray-400 text-sm">
                         {product.description || product.nom}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-5">
-                    <p className="text-3xl font-black text-emerald-400">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-lg font-black text-white">
                       {formatEuros(toCents(product.prix))}
                     </p>
 
-                    <p className="text-gray-400 text-xs mt-1">
+                    <p className="text-gray-400 text-xs">
                       {product.stock_quantity > 0
                         ? `${product.stock_quantity} ${plural(
                             product.stock_quantity,
@@ -480,15 +410,14 @@ export default function DashboardPage() {
                     <button
                       type="button"
                       disabled={!available}
+                      aria-label={available ? `Ajouter ${product.nom}` : undefined}
                       onClick={() => addProduct(product)}
-                      className="w-full mt-5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 py-3.5 rounded-2xl font-black text-base transition active:scale-[0.98]"
+                      className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-white/10 disabled:text-gray-500 py-3.5 rounded-xl font-black text-base transition active:scale-[0.98]"
                     >
-                      {available
-                        ? `+ Ajouter ${product.nom}`
-                        : 'Rupture de stock'}
+                      {available ? 'Ajouter' : 'Rupture de stock'}
                     </button>
                   ) : (
-                    <div className="w-full mt-5 bg-blue-600 rounded-2xl overflow-hidden flex items-center">
+                    <div className="w-full bg-blue-600 rounded-xl overflow-hidden flex items-center">
                       <button
                         type="button"
                         aria-label={`Retirer un ${product.nom}`}
@@ -525,25 +454,14 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => router.push('/cart')}
-          className="fixed bottom-5 left-4 right-4 z-50 max-w-lg mx-auto bg-blue-600 hover:bg-blue-500 rounded-2xl px-5 py-4 shadow-2xl shadow-blue-900/40 flex items-center justify-between active:scale-[0.98] transition"
+          className="fixed bottom-5 left-4 right-4 z-50 max-w-lg mx-auto bg-blue-600 hover:bg-blue-500 rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-center justify-between gap-4 active:scale-[0.98] transition"
         >
-          <div className="flex items-center gap-3">
-            <span className="text-xl" aria-hidden="true">
-              🛒
-            </span>
-
-            <div className="text-left">
-              <p className="font-black">
-                {cartCount} {plural(cartCount, 'article', 'articles')}
-              </p>
-
-              <p className="text-xs text-blue-100">Voir ma commande</p>
-            </div>
-          </div>
-
-          <span className="text-lg font-black">
-            {formatEuros(cartTotalCents)}
+          <span className="font-black">
+            Voir mon panier · {cartCount}{' '}
+            {plural(cartCount, 'article', 'articles')}
           </span>
+
+          <span className="font-black">{formatEuros(cartTotalCents)}</span>
         </button>
       )}
     </main>

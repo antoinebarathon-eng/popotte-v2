@@ -39,6 +39,7 @@ type DeletedUser = {
   username: string;
   email: string | null;
   solde_compte: number;
+  created_at?: string | null;
   deleted_at?: string | null;
 };
 
@@ -92,6 +93,27 @@ type Message = {
 type AuthState = 'checking' | 'locked' | 'unlocked';
 
 const REFRESH_INTERVAL_MS = 30000;
+
+const CARD = 'bg-[#14161b] border border-white/10 rounded-3xl';
+const SUB_CARD = 'bg-[#0d0f13] border border-white/10 rounded-xl';
+const FIELD =
+  'w-full px-4 py-3 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition';
+const BTN =
+  'rounded-xl px-4 py-3 font-black text-sm transition disabled:bg-white/10 disabled:text-gray-500';
+const BTN_PRIMARY = `${BTN} bg-blue-600 hover:bg-blue-500 text-white`;
+const BTN_NEUTRAL = `${BTN} bg-white/5 hover:bg-white/10 border border-white/10 text-white`;
+const BTN_DANGER = `${BTN} border border-white/10 text-red-400 hover:bg-red-500/10`;
+
+// Date courte à la française, tolérante aux valeurs absentes ou illisibles.
+const formatDateCourte = (value?: string | null) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toLocaleDateString('fr-FR');
+};
 
 export default function AdminPage() {
   const router = useRouter();
@@ -533,6 +555,10 @@ export default function AdminPage() {
         `${user.username} a été déplacé dans « Utilisateurs supprimés ».`
       );
     } catch (error) {
+      /*
+       * Le serveur refuse la suppression d'un compte encore en dette et
+       * explique le montant restant : on relaie son message tel quel.
+       */
       showMessage(
         'error',
         error instanceof Error ? error.message : 'Erreur suppression compte.'
@@ -738,10 +764,10 @@ export default function AdminPage() {
   const messageBanner = message ? (
     <div
       role={message.type === 'success' ? 'status' : 'alert'}
-      className={`mb-6 rounded-lg px-4 py-3 font-bold ${
+      className={`mb-6 rounded-xl px-4 py-3 text-sm ${
         message.type === 'success'
-          ? 'bg-green-600/20 border border-green-500/40 text-green-200'
-          : 'bg-red-600/20 border border-red-500/40 text-red-200'
+          ? 'bg-[#14161b] border border-white/10 text-white'
+          : 'bg-red-950/40 border border-red-500/40 text-red-300'
       }`}
     >
       {message.text}
@@ -750,8 +776,8 @@ export default function AdminPage() {
 
   if (authState === 'checking') {
     return (
-      <main className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
-        <p className="text-xl" role="status">
+      <main className="min-h-screen bg-[#090a0d] text-white flex items-center justify-center p-4">
+        <p className="text-sm text-gray-400" role="status">
           Vérification de l&apos;accès...
         </p>
       </main>
@@ -760,81 +786,92 @@ export default function AdminPage() {
 
   if (authState === 'locked') {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-red-900 to-red-700 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-          <h1 className="text-3xl font-bold text-center mb-8 text-red-600">
-            🔐 Admin Panel
-          </h1>
+      <main className="min-h-screen bg-[#090a0d] text-white px-4 py-10 flex items-center">
+        <div className="w-full max-w-sm mx-auto">
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-black">Espace administration</h1>
 
-          {message && (
-            <div
-              role={message.type === 'success' ? 'status' : 'alert'}
-              className={`mb-6 rounded-lg px-4 py-3 font-bold ${
-                message.type === 'success'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}
-            >
-              {message.text}
-            </div>
-          )}
+            <p className="text-gray-400 text-xs mt-2">
+              Accès réservé, code demandé à chaque session.
+            </p>
+          </div>
 
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <div>
-              <label
-                htmlFor="admin-code"
-                className="block text-sm font-bold text-gray-700 mb-1"
+          <div className={`${CARD} p-6`}>
+            {message && (
+              <div
+                role={message.type === 'success' ? 'status' : 'alert'}
+                className={`mb-6 rounded-xl px-4 py-3 text-sm ${
+                  message.type === 'success'
+                    ? 'bg-[#0d0f13] border border-white/10 text-white'
+                    : 'bg-red-950/40 border border-red-500/40 text-red-300'
+                }`}
               >
-                Code administrateur
-              </label>
+                {message.text}
+              </div>
+            )}
 
-              <input
-                id="admin-code"
-                type="password"
-                value={adminCode}
-                onChange={(e) => setAdminCode(e.target.value)}
-                placeholder="Entrer le code"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black"
-                required
-              />
+            <form onSubmit={handleAdminLogin} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="admin-code"
+                  className="text-sm font-black text-gray-300"
+                >
+                  Code administrateur
+                </label>
+
+                <input
+                  id="admin-code"
+                  type="password"
+                  value={adminCode}
+                  onChange={(e) => setAdminCode(e.target.value)}
+                  placeholder="Entrer le code"
+                  className={FIELD}
+                  required
+                />
+              </div>
+
+              <button disabled={unlocking} className={`${BTN_PRIMARY} w-full`}>
+                {unlocking ? 'Vérification...' : "Accéder à l'admin"}
+              </button>
+            </form>
+
+            <div className="mt-7 pt-6 border-t border-white/10 text-center">
+              <Link
+                href="/dashboard"
+                className="text-blue-400 hover:text-blue-300 font-black text-sm"
+              >
+                Retour au tableau de bord
+              </Link>
             </div>
-
-            <button
-              disabled={unlocking}
-              className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg"
-            >
-              {unlocking ? '⏳ Vérification...' : "Accéder à l'admin"}
-            </button>
-          </form>
-
-          <Link
-            href="/dashboard"
-            className="mt-6 text-center block text-blue-600 hover:underline"
-          >
-            Retour au dashboard
-          </Link>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
-          <h1 className="text-4xl font-bold">⚙️ Panneau d&apos;administration</h1>
+    <main className="min-h-screen bg-[#090a0d] text-white px-4 py-8 md:px-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-wrap justify-between items-baseline gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-black">Administration</h1>
+
+            <p className="text-gray-400 text-xs mt-1">
+              Produits, comptes, commandes et dettes de la popotte.
+            </p>
+          </div>
 
           <Link
             href="/dashboard"
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-bold"
+            className="text-blue-400 hover:text-blue-300 font-black text-sm"
           >
-            ← Tableau de bord
+            Retour au tableau de bord
           </Link>
         </div>
 
         {messageBanner}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
           <StatCard title="Ventes" value={formatEuros(stats.ventesCents)} />
 
           <StatCard title="Dettes" value={formatEuros(stats.dettesCents)} />
@@ -842,15 +879,15 @@ export default function AdminPage() {
           <StatCard title="Commandes" value={String(stats.commandes)} />
         </div>
 
-        <div className="flex flex-wrap gap-3 mb-8">
-          <div role="tablist" className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-2 mb-8">
+          <div role="tablist" className="flex flex-wrap gap-2">
             <TabButton
               id="onglet-products"
               panelId="panneau-products"
               active={tab === 'products'}
               onClick={() => setTab('products')}
             >
-              📦 Produits ({products.length})
+              Produits ({products.length})
             </TabButton>
 
             <TabButton
@@ -859,7 +896,7 @@ export default function AdminPage() {
               active={tab === 'users'}
               onClick={() => setTab('users')}
             >
-              👥 Utilisateurs ({users.length})
+              Utilisateurs ({users.length})
             </TabButton>
 
             <TabButton
@@ -868,7 +905,7 @@ export default function AdminPage() {
               active={tab === 'orders'}
               onClick={() => setTab('orders')}
             >
-              🧾 Commandes ({orders.length})
+              Commandes ({orders.length})
             </TabButton>
 
             <TabButton
@@ -877,7 +914,7 @@ export default function AdminPage() {
               active={tab === 'deleted-users'}
               onClick={() => setTab('deleted-users')}
             >
-              🗑️ Utilisateurs supprimés ({deletedUsers.length})
+              Supprimés ({deletedUsers.length})
             </TabButton>
 
             <TabButton
@@ -886,7 +923,7 @@ export default function AdminPage() {
               active={tab === 'debts'}
               onClick={() => setTab('debts')}
             >
-              💸 Dettes ({debtUsers.length})
+              Dettes ({debtUsers.length})
             </TabButton>
 
             <TabButton
@@ -895,7 +932,7 @@ export default function AdminPage() {
               active={tab === 'stats'}
               onClick={() => setTab('stats')}
             >
-              📊 Statistiques
+              Statistiques
             </TabButton>
           </div>
 
@@ -903,9 +940,9 @@ export default function AdminPage() {
             type="button"
             onClick={() => loadData(false)}
             disabled={refreshing}
-            className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-5 py-3 rounded-lg font-bold"
+            className={`${BTN_NEUTRAL} ml-auto`}
           >
-            {refreshing ? '↻ Chargement...' : '🔄 Actualiser'}
+            {refreshing ? 'Chargement...' : 'Actualiser'}
           </button>
         </div>
 
@@ -914,9 +951,9 @@ export default function AdminPage() {
             id="panneau-stats"
             role="tabpanel"
             aria-labelledby="onglet-stats"
-            className="space-y-4"
+            className="space-y-3"
           >
-            <section className="bg-gray-800 rounded-xl overflow-hidden">
+            <section className={`${CARD} overflow-hidden`}>
               <button
                 type="button"
                 aria-expanded={openStats.ventes}
@@ -927,15 +964,15 @@ export default function AdminPage() {
                     ventes: !state.ventes,
                   }))
                 }
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-700"
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition"
               >
                 <div>
-                  <h2 className="text-xl font-bold">💰 Ventes</h2>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <h2 className="text-xl font-black">Ventes</h2>
+                  <p className="text-gray-400 text-xs mt-1">
                     Résumé de l&apos;activité commerciale
                   </p>
                 </div>
-                <span className="text-2xl" aria-hidden="true">
+                <span className="text-gray-400 text-xs" aria-hidden="true">
                   {openStats.ventes ? '▲' : '▼'}
                 </span>
               </button>
@@ -943,29 +980,35 @@ export default function AdminPage() {
               {openStats.ventes && (
                 <div
                   id="stats-ventes"
-                  className="p-5 pt-0 grid grid-cols-1 md:grid-cols-3 gap-4"
+                  className="p-5 pt-0 grid grid-cols-1 md:grid-cols-3 gap-3"
                 >
                   <StatCard
+                    nested
                     title="Chiffre d'affaires"
                     value={formatEuros(stats.ventesCents)}
                   />
                   <StatCard
+                    nested
                     title="Commandes"
                     value={String(stats.commandes)}
                   />
                   <StatCard
+                    nested
                     title="Panier moyen"
                     value={formatEuros(stats.averageOrderCents)}
                   />
                   <StatCard
+                    nested
                     title="Ventes aujourd'hui"
                     value={formatEuros(stats.ventesJourCents)}
                   />
                   <StatCard
+                    nested
                     title="Commandes aujourd'hui"
                     value={String(stats.commandesJour)}
                   />
                   <StatCard
+                    nested
                     title="Dettes actuelles"
                     value={formatEuros(stats.dettesCents)}
                   />
@@ -973,7 +1016,7 @@ export default function AdminPage() {
               )}
             </section>
 
-            <section className="bg-gray-800 rounded-xl overflow-hidden">
+            <section className={`${CARD} overflow-hidden`}>
               <button
                 type="button"
                 aria-expanded={openStats.produits}
@@ -984,15 +1027,15 @@ export default function AdminPage() {
                     produits: !state.produits,
                   }))
                 }
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-700"
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition"
               >
                 <div>
-                  <h2 className="text-xl font-bold">📦 Produits</h2>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <h2 className="text-xl font-black">Produits</h2>
+                  <p className="text-gray-400 text-xs mt-1">
                     Produits les plus et les moins vendus
                   </p>
                 </div>
-                <span className="text-2xl" aria-hidden="true">
+                <span className="text-gray-400 text-xs" aria-hidden="true">
                   {openStats.produits ? '▲' : '▼'}
                 </span>
               </button>
@@ -1002,20 +1045,19 @@ export default function AdminPage() {
                   id="stats-produits"
                   className="p-5 pt-0 grid grid-cols-1 lg:grid-cols-2 gap-6"
                 >
-                  <StatsList
-                    title="🏆 Produits les plus vendus"
-                    empty="Aucune vente."
-                  >
+                  <StatsList title="Les plus vendus" empty="Aucune vente.">
                     {stats.topProducts.map((product, index) => (
                       <div
                         key={product.id}
-                        className="bg-gray-700 rounded-lg p-4 flex justify-between items-center"
+                        className={`${SUB_CARD} px-4 py-3 flex justify-between items-center gap-3`}
                       >
-                        <div>
-                          <span className="font-bold mr-3">#{index + 1}</span>
+                        <div className="text-sm">
+                          <span className="text-gray-400 mr-3">
+                            {index + 1}
+                          </span>
                           <span>{product.nom}</span>
                         </div>
-                        <span className="font-bold text-green-400">
+                        <span className="text-sm font-black">
                           {product.quantite} vendu
                           {product.quantite > 1 ? 's' : ''}
                         </span>
@@ -1023,17 +1065,14 @@ export default function AdminPage() {
                     ))}
                   </StatsList>
 
-                  <StatsList
-                    title="📉 Produits les moins vendus"
-                    empty="Aucun produit."
-                  >
+                  <StatsList title="Les moins vendus" empty="Aucun produit.">
                     {stats.leastSoldProducts.map((product) => (
                       <div
                         key={product.id}
-                        className="bg-gray-700 rounded-lg p-4 flex justify-between items-center"
+                        className={`${SUB_CARD} px-4 py-3 flex justify-between items-center gap-3`}
                       >
-                        <span>{product.nom}</span>
-                        <span className="font-bold text-yellow-400">
+                        <span className="text-sm">{product.nom}</span>
+                        <span className="text-sm font-black">
                           {product.quantite} vendu
                           {product.quantite > 1 ? 's' : ''}
                         </span>
@@ -1044,7 +1083,7 @@ export default function AdminPage() {
               )}
             </section>
 
-            <section className="bg-gray-800 rounded-xl overflow-hidden">
+            <section className={`${CARD} overflow-hidden`}>
               <button
                 type="button"
                 aria-expanded={openStats.utilisateurs}
@@ -1055,15 +1094,15 @@ export default function AdminPage() {
                     utilisateurs: !state.utilisateurs,
                   }))
                 }
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-700"
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition"
               >
                 <div>
-                  <h2 className="text-xl font-bold">👤 Utilisateurs</h2>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <h2 className="text-xl font-black">Utilisateurs</h2>
+                  <p className="text-gray-400 text-xs mt-1">
                     Utilisateurs qui achètent le plus
                   </p>
                 </div>
-                <span className="text-2xl" aria-hidden="true">
+                <span className="text-gray-400 text-xs" aria-hidden="true">
                   {openStats.utilisateurs ? '▲' : '▼'}
                 </span>
               </button>
@@ -1071,19 +1110,21 @@ export default function AdminPage() {
               {openStats.utilisateurs && (
                 <div id="stats-utilisateurs" className="p-5 pt-0">
                   <StatsList
-                    title="👤 Utilisateurs qui achètent le plus"
+                    title="Utilisateurs qui achètent le plus"
                     empty="Aucune commande."
                   >
                     {stats.topUsers.map((user, index) => (
                       <div
                         key={user.userId}
-                        className="bg-gray-700 rounded-lg p-4 flex justify-between items-center"
+                        className={`${SUB_CARD} px-4 py-3 flex justify-between items-center gap-3`}
                       >
-                        <div>
-                          <span className="font-bold mr-3">#{index + 1}</span>
+                        <div className="text-sm">
+                          <span className="text-gray-400 mr-3">
+                            {index + 1}
+                          </span>
                           <span>{user.username}</span>
                         </div>
-                        <span className="font-bold">
+                        <span className="text-sm font-black">
                           {formatEuros(user.montantCents)}
                         </span>
                       </div>
@@ -1093,7 +1134,7 @@ export default function AdminPage() {
               )}
             </section>
 
-            <section className="bg-gray-800 rounded-xl overflow-hidden">
+            <section className={`${CARD} overflow-hidden`}>
               <button
                 type="button"
                 aria-expanded={openStats.stock}
@@ -1104,42 +1145,45 @@ export default function AdminPage() {
                     stock: !state.stock,
                   }))
                 }
-                className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-700"
+                className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition"
               >
                 <div>
-                  <h2 className="text-xl font-bold">📊 Stock</h2>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <h2 className="text-xl font-black">Stock</h2>
+                  <p className="text-gray-400 text-xs mt-1">
                     État des stocks et ruptures
                   </p>
                 </div>
-                <span className="text-2xl" aria-hidden="true">
+                <span className="text-gray-400 text-xs" aria-hidden="true">
                   {openStats.stock ? '▲' : '▼'}
                 </span>
               </button>
 
               {openStats.stock && (
                 <div id="stats-stock" className="p-5 pt-0 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <StatCard
+                      nested
                       title="Produits actifs"
                       value={String(stats.activeProducts)}
                     />
                     <StatCard
+                      nested
                       title="Produits en rupture"
                       value={String(stats.productsOut)}
                     />
                     <StatCard
+                      nested
                       title="Quantité totale en stock"
                       value={String(stats.totalStock)}
                     />
                   </div>
 
                   <section>
-                    <h3 className="text-lg font-bold mb-4">
-                      📦 État détaillé des produits
+                    <h3 className="text-base font-black mb-3">
+                      État détaillé des produits
                     </h3>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {products
                         .slice()
                         .sort(
@@ -1149,29 +1193,25 @@ export default function AdminPage() {
                         .map((product) => (
                           <div
                             key={product.id}
-                            className="bg-gray-700 rounded-lg p-4 flex flex-wrap justify-between items-center gap-3"
+                            className={`${SUB_CARD} px-4 py-3 flex flex-wrap justify-between items-center gap-3`}
                           >
                             <div>
-                              <p className="font-bold">{product.nom}</p>
-                              <p className="text-gray-400 text-sm">
+                              <p className="text-sm font-black">
+                                {product.nom}
+                              </p>
+                              <p className="text-gray-400 text-xs mt-0.5">
                                 {product.categorie} •{' '}
                                 {formatEuros(toCents(product.prix))}
                               </p>
                             </div>
 
                             <div className="text-right">
-                              <p
-                                className={`font-bold ${
-                                  product.stock_quantity <= 0
-                                    ? 'text-red-400'
-                                    : product.stock_quantity <= 5
-                                    ? 'text-yellow-400'
-                                    : 'text-green-400'
-                                }`}
-                              >
-                                Stock : {product.stock_quantity}
+                              <p className="text-sm font-black">
+                                {product.stock_quantity <= 0
+                                  ? 'Rupture'
+                                  : `Stock : ${product.stock_quantity}`}
                               </p>
-                              <p className="text-gray-400 text-xs">
+                              <p className="text-gray-400 text-xs mt-0.5">
                                 {product.active ? 'Actif' : 'Inactif'}
                               </p>
                             </div>
@@ -1192,11 +1232,15 @@ export default function AdminPage() {
             aria-labelledby="onglet-products"
             className="space-y-8"
           >
-            <section className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Ajouter un produit</h2>
+            <section className={`${CARD} p-6`}>
+              <h2 className="text-xl font-black mb-1">Ajouter un produit</h2>
+
+              <p className="text-gray-400 text-xs mb-6">
+                Le produit est mis en vente immédiatement.
+              </p>
 
               <form onSubmit={handleAddProduct} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex flex-col">
                     <label htmlFor="produit-nom" className="sr-only">
                       Nom du produit
@@ -1212,7 +1256,7 @@ export default function AdminPage() {
                         }))
                       }
                       placeholder="Nom du produit"
-                      className="px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg"
+                      className={FIELD}
                       required
                     />
                   </div>
@@ -1232,7 +1276,7 @@ export default function AdminPage() {
                         }))
                       }
                       placeholder="Description"
-                      className="px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg"
+                      className={FIELD}
                     />
                   </div>
 
@@ -1254,7 +1298,7 @@ export default function AdminPage() {
                         }))
                       }
                       placeholder="Prix (€)"
-                      className="px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg"
+                      className={FIELD}
                       required
                     />
                   </div>
@@ -1277,7 +1321,7 @@ export default function AdminPage() {
                         }))
                       }
                       placeholder="Stock"
-                      className="px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg"
+                      className={FIELD}
                       required
                     />
                   </div>
@@ -1296,38 +1340,35 @@ export default function AdminPage() {
                           categorie: e.target.value,
                         }))
                       }
-                      className="px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg"
+                      className={FIELD}
                     >
-                      <option value="boisson">🥤 Boisson</option>
-                      <option value="friandise">🍫 Friandise</option>
-                      <option value="alcool">🍺 Alcool</option>
-                      <option value="chips">🍟 Chips</option>
+                      <option value="boisson">Boisson</option>
+                      <option value="friandise">Friandise</option>
+                      <option value="alcool">Alcool</option>
+                      <option value="chips">Chips</option>
                     </select>
                   </div>
                 </div>
 
-                <button
-                  disabled={loading}
-                  className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 px-6 py-3 rounded-lg font-bold"
-                >
-                  {loading ? '⏳ Ajout...' : '✅ Ajouter le produit'}
+                <button disabled={loading} className={`${BTN_PRIMARY} w-full`}>
+                  {loading ? 'Ajout...' : 'Ajouter le produit'}
                 </button>
               </form>
             </section>
 
-            <section className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Produits</h2>
+            <section>
+              <h2 className="text-xl font-black mb-4">Produits</h2>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {products.map((product) => (
                   <div
                     key={product.id}
-                    className="bg-gray-700 rounded-lg p-4 flex flex-wrap justify-between items-center gap-4"
+                    className={`${CARD} p-5 flex flex-wrap justify-between items-center gap-4`}
                   >
                     <div>
-                      <p className="font-bold text-lg">{product.nom}</p>
+                      <p className="text-base font-black">{product.nom}</p>
 
-                      <p className="text-gray-400 text-sm">
+                      <p className="text-gray-400 text-xs mt-1">
                         {product.categorie} •{' '}
                         {formatEuros(toCents(product.prix))} • Stock :{' '}
                         {product.stock_quantity}
@@ -1341,20 +1382,22 @@ export default function AdminPage() {
                         aria-label={`${
                           product.active ? 'Désactiver' : 'Activer'
                         } le produit ${product.nom}`}
-                        className={`px-4 py-2 rounded-lg font-bold disabled:opacity-50 ${
-                          product.active ? 'bg-green-600' : 'bg-gray-600'
-                        }`}
+                        className={
+                          product.active
+                            ? `${BTN} bg-blue-600 hover:bg-blue-500 text-white`
+                            : `${BTN} bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400`
+                        }
                       >
-                        {product.active ? '✅ Actif' : '❌ Inactif'}
+                        {product.active ? 'Actif' : 'Inactif'}
                       </button>
 
                       <button
                         onClick={() => handleDeleteProduct(product)}
                         disabled={pending === `delete-product:${product.id}`}
                         aria-label={`Supprimer le produit ${product.nom}`}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-bold"
+                        className={BTN_DANGER}
                       >
-                        🗑️
+                        Supprimer
                       </button>
                     </div>
                   </div>
@@ -1369,11 +1412,10 @@ export default function AdminPage() {
             id="panneau-users"
             role="tabpanel"
             aria-labelledby="onglet-users"
-            className="bg-gray-800 rounded-lg p-6"
           >
-            <h2 className="text-2xl font-bold mb-6">👥 Utilisateurs</h2>
+            <h2 className="text-xl font-black mb-4">Utilisateurs</h2>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {users.map((user) => (
                 <UserCard
                   key={user.id}
@@ -1394,56 +1436,57 @@ export default function AdminPage() {
             id="panneau-deleted-users"
             role="tabpanel"
             aria-labelledby="onglet-deleted-users"
-            className="bg-gray-800 rounded-lg p-6"
           >
-            <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+            <div className="flex flex-wrap justify-between items-baseline gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">
-                  🗑️ Utilisateurs supprimés
-                </h2>
-                <p className="text-gray-400 mt-1">
+                <h2 className="text-xl font-black">Utilisateurs supprimés</h2>
+
+                <p className="text-gray-400 text-xs mt-1">
                   Le compte n&apos;est plus actif, mais le nom et
                   l&apos;historique des commandes restent conservés.
                 </p>
               </div>
-              <div className="bg-gray-700 rounded-lg px-4 py-3 font-bold">
+
+              <p className="text-gray-400 text-xs">
                 {deletedUsers.length} compte{deletedUsers.length > 1 ? 's' : ''}
-              </div>
+              </p>
             </div>
 
             {deletedUsers.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <p className="text-5xl mb-4">🗃️</p>
-                <p className="text-xl">Aucun utilisateur supprimé.</p>
+              <div className={`${CARD} py-16 text-center text-gray-400 text-sm`}>
+                Aucun utilisateur supprimé.
               </div>
             ) : (
-              <div className="space-y-4">
-                {deletedUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="bg-gray-700 rounded-xl p-5 border border-red-500/20"
-                  >
-                    <div className="flex flex-wrap justify-between items-center gap-4">
+              <div className="space-y-2">
+                {deletedUsers.map((user) => {
+                  const dateSuppression = formatDateCourte(user.deleted_at);
+
+                  return (
+                    <div
+                      key={user.id}
+                      className={`${CARD} p-5 flex flex-wrap justify-between items-center gap-4`}
+                    >
                       <div>
                         {/* Le nom archivé ne porte plus de préfixe 🗑️ : le
                             nettoyage du préfixe n'avait plus d'objet. */}
-                        <p className="font-bold text-xl">{user.username}</p>
-                        <p className="text-gray-400 text-sm">
-                          Ancien compte supprimé
+                        <p className="text-base font-black">{user.username}</p>
+                        <p className="text-gray-400 text-xs mt-1">
+                          Historique conservé
                         </p>
-                        <p className="text-gray-500 text-xs mt-1">
+                        <p className="text-gray-400 text-xs mt-0.5">
                           ID : {user.original_user_id}
                         </p>
                       </div>
+
                       <div className="text-right">
-                        <p className="text-red-400 font-bold">🗑️ Supprimé</p>
-                        <p className="text-gray-400 text-sm">
-                          Historique conservé
+                        <p className="text-gray-400 text-xs">Supprimé le</p>
+                        <p className="text-base font-black mt-0.5">
+                          {dateSuppression ?? 'Date inconnue'}
                         </p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -1454,59 +1497,58 @@ export default function AdminPage() {
             id="panneau-debts"
             role="tabpanel"
             aria-labelledby="onglet-debts"
-            className="bg-gray-800 rounded-lg p-6"
           >
-            <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+            <div className="flex flex-wrap justify-between items-baseline gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">💸 Dettes à récupérer</h2>
+                <h2 className="text-xl font-black">Dettes à récupérer</h2>
 
-                <p className="text-gray-400">
+                <p className="text-gray-400 text-xs mt-1">
                   Total actuel :{' '}
-                  <strong className="text-red-400">
+                  <span className="text-red-400 font-black">
                     {formatEuros(stats.dettesCents)}
-                  </strong>
+                  </span>
                 </p>
               </div>
 
-              <div className="bg-red-600/20 border border-red-500/40 rounded-lg px-4 py-3">
+              <p className="text-gray-400 text-xs">
                 {debtUsers.length} utilisateur
                 {debtUsers.length > 1 ? 's' : ''} concerné
                 {debtUsers.length > 1 ? 's' : ''}
-              </div>
+              </p>
             </div>
 
             {debtUsers.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <p className="text-5xl mb-4">✅</p>
-                <p className="text-xl">Aucune dette actuellement.</p>
+              <div className={`${CARD} py-16 text-center text-gray-400 text-sm`}>
+                Aucune dette actuellement.
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {debtUsers.map((user) => {
                   const soldeCents = toCents(user.solde_compte);
                   const detteCents = Math.max(-soldeCents, 0);
 
                   return (
-                    <div
-                      key={user.id}
-                      className="bg-gray-700 rounded-xl p-5 border border-red-500/20"
-                    >
+                    <div key={user.id} className={`${CARD} p-5`}>
                       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                         <div>
-                          <p className="font-bold text-xl">{user.username}</p>
+                          <p className="text-base font-black">
+                            {user.username}
+                          </p>
 
-                          <p className="text-gray-400 text-sm">{user.email}</p>
+                          <p className="text-gray-400 text-xs mt-1">
+                            {user.email}
+                          </p>
 
-                          <p className="text-gray-400 text-sm mt-2">
+                          <p className="text-gray-400 text-xs mt-1">
                             Solde actuel : {formatEuros(soldeCents)}
                           </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-4">
                           <div className="text-right">
-                            <p className="text-gray-400 text-sm">Dette</p>
+                            <p className="text-gray-400 text-xs">Dette</p>
 
-                            <p className="text-3xl font-bold text-red-400">
+                            <p className="text-2xl font-black text-red-400">
                               {formatEuros(detteCents)}
                             </p>
                           </div>
@@ -1514,9 +1556,9 @@ export default function AdminPage() {
                           <button
                             onClick={() => handleSettleDebt(user)}
                             disabled={pending === `settle:${user.id}`}
-                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-5 py-3 rounded-lg font-bold"
+                            className={BTN_PRIMARY}
                           >
-                            ✅ Dette réglée
+                            Dette réglée
                           </button>
                         </div>
                       </div>
@@ -1533,50 +1575,47 @@ export default function AdminPage() {
             id="panneau-orders"
             role="tabpanel"
             aria-labelledby="onglet-orders"
-            className="bg-gray-800 rounded-lg p-6"
           >
-            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-              <div>
-                <h2 className="text-2xl font-bold">🧾 Commandes</h2>
+            <div className="mb-4">
+              <h2 className="text-xl font-black">Commandes</h2>
 
-                <p className="text-gray-400 text-sm">
-                  Les commandes sont validées immédiatement.
-                </p>
-              </div>
+              <p className="text-gray-400 text-xs mt-1">
+                Les commandes sont validées immédiatement.
+              </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               {orders.map((order) => (
-                <div key={order.id} className="bg-gray-700 rounded-xl p-5">
+                <div key={order.id} className={`${CARD} p-5`}>
                   <div className="flex flex-wrap justify-between gap-3">
                     <div>
-                      <p className="font-bold text-lg">
+                      <p className="text-base font-black">
                         {userName(order.user_id)}
                       </p>
 
-                      <p className="text-gray-400 text-sm">
+                      <p className="text-gray-400 text-xs mt-1">
                         {new Date(order.created_at).toLocaleString('fr-FR')}
                       </p>
                     </div>
 
                     <div className="text-right">
-                      <p className="text-2xl font-bold">
+                      <p
+                        className={`text-2xl font-black ${
+                          order.status === 'annulee'
+                            ? 'line-through decoration-white/40'
+                            : ''
+                        }`}
+                      >
                         {formatEuros(toCents(order.montant))}
                       </p>
 
-                      <p
-                        className={
-                          order.status === 'annulee'
-                            ? 'text-red-400'
-                            : 'text-green-400'
-                        }
-                      >
+                      <p className="text-gray-400 text-xs mt-0.5">
                         {order.status}
                       </p>
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-600 mt-4 pt-4 space-y-2">
+                  <div className="border-t border-white/10 mt-4 pt-4 space-y-2">
                     {/* On lit l'index au lieu de refiltrer toute la liste
                         des articles pour chaque commande affichée. */}
                     {(itemsByOrder.get(order.id) || []).map((item) => (
@@ -1600,7 +1639,7 @@ export default function AdminPage() {
               ))}
 
               {orders.length === 0 && (
-                <div className="text-center py-12 text-gray-400">
+                <div className={`${CARD} py-16 text-center text-gray-400 text-sm`}>
                   Aucune commande.
                 </div>
               )}
@@ -1633,8 +1672,10 @@ function TabButton({
       aria-selected={active}
       aria-controls={panelId}
       onClick={onClick}
-      className={`px-5 py-3 rounded-lg font-bold ${
-        active ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+      className={`px-4 py-2.5 rounded-xl font-black text-sm border transition ${
+        active
+          ? 'bg-white/10 border-white/10 text-blue-400'
+          : 'bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
       }`}
     >
       {children}
@@ -1642,11 +1683,19 @@ function TabButton({
   );
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
+function StatCard({
+  title,
+  value,
+  nested = false,
+}: {
+  title: string;
+  value: string;
+  nested?: boolean;
+}) {
   return (
-    <div className="bg-gray-800 rounded-xl p-5">
-      <p className="text-gray-400 text-sm">{title}</p>
-      <p className="text-2xl font-bold mt-1">{value}</p>
+    <div className={`${nested ? `${SUB_CARD} p-4` : `${CARD} p-5`}`}>
+      <p className="text-gray-400 text-xs">{title}</p>
+      <p className="text-2xl font-black mt-1">{value}</p>
     </div>
   );
 }
@@ -1665,15 +1714,15 @@ function StatsList({
     : Boolean(children);
 
   return (
-    <section className="bg-gray-800 rounded-xl p-6">
+    <section>
       {/* Ce bloc est imbriqué sous le h2 de la section : il descend en h3
           pour garder une hiérarchie de titres cohérente. */}
-      <h3 className="text-xl font-bold mb-4">{title}</h3>
+      <h3 className="text-base font-black mb-3">{title}</h3>
 
       {hasChildren ? (
-        <div className="space-y-3">{children}</div>
+        <div className="space-y-2">{children}</div>
       ) : (
-        <p className="text-gray-400">{empty}</p>
+        <p className="text-gray-400 text-sm">{empty}</p>
       )}
     </section>
   );
@@ -1713,38 +1762,38 @@ function UserCard({
   const settlePending = pending === `settle:${user.id}`;
 
   return (
-    <div className="bg-gray-700 rounded-xl p-5">
+    <div className={`${CARD} p-5`}>
       <div className="flex flex-col md:flex-row md:justify-between gap-3">
         <div>
-          <p className="font-bold text-xl">{user.username}</p>
+          <p className="text-base font-black">{user.username}</p>
 
-          <p className="text-gray-400 text-sm">{user.email}</p>
+          <p className="text-gray-400 text-xs mt-1">{user.email}</p>
         </div>
 
-        <div className="text-right">
+        <div className="md:text-right">
           <p
-            className={`font-bold text-2xl ${
-              detteCents > 0 ? 'text-red-400' : 'text-green-400'
+            className={`text-2xl font-black ${
+              detteCents > 0 ? 'text-red-400' : 'text-white'
             }`}
           >
             {formatEuros(soldeCents)}
           </p>
 
           {detteCents > 0 && (
-            <p className="text-red-400 text-sm">
+            <p className="text-red-400 text-xs mt-0.5">
               Dette : {formatEuros(detteCents)}
             </p>
           )}
         </div>
       </div>
 
-      <div className="border-t border-gray-600 mt-4 pt-4 grid grid-cols-1 md:grid-cols-4 gap-2">
+      <div className="border-t border-white/10 mt-4 pt-4 grid grid-cols-1 md:grid-cols-4 gap-2">
         {[5, 10, 20].map((amount) => (
           <button
             key={amount}
             onClick={() => onRecharge(user, amount)}
             disabled={rechargePending}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-3 rounded-lg font-bold"
+            className={BTN_NEUTRAL}
           >
             +{amount} €
           </button>
@@ -1763,7 +1812,7 @@ function UserCard({
             value={customAmount}
             onChange={(e) => setCustomAmount(e.target.value)}
             placeholder="Autre montant"
-            className="flex-1 min-w-0 px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg"
+            className={`${FIELD} flex-1 min-w-0`}
           />
 
           <button
@@ -1777,7 +1826,7 @@ function UserCard({
               if (Number.isFinite(amount) && amount > 0) setCustomAmount('');
             }}
             disabled={rechargePending}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-2 rounded-lg font-bold"
+            className={BTN_PRIMARY}
           >
             Créditer
           </button>
@@ -1785,24 +1834,28 @@ function UserCard({
       </div>
 
       {detteCents > 0 && (
-        <div className="mt-4 p-4 bg-red-900/30 border border-red-500/30 rounded-lg flex flex-wrap justify-between items-center gap-3">
+        <div
+          className={`${SUB_CARD} mt-4 p-4 flex flex-wrap justify-between items-center gap-3`}
+        >
           <div>
-            <p className="font-bold text-red-300">💸 Dette à récupérer</p>
+            <p className="text-sm font-black">Dette à récupérer</p>
 
-            <p className="text-sm text-gray-300">{formatEuros(detteCents)}</p>
+            <p className="text-red-400 font-black mt-0.5">
+              {formatEuros(detteCents)}
+            </p>
           </div>
 
           <button
             onClick={() => onSettleDebt(user)}
             disabled={settlePending}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-2 rounded-lg font-bold"
+            className={BTN_PRIMARY}
           >
-            ✅ Dette réglée
+            Dette réglée
           </button>
         </div>
       )}
 
-      <div className="border-t border-gray-600 mt-4 pt-4 flex gap-2">
+      <div className="border-t border-white/10 mt-4 pt-4 flex flex-wrap gap-2">
         <label htmlFor={`solde-${user.id}`} className="sr-only">
           Nouveau solde de {user.username} en euros
         </label>
@@ -1814,7 +1867,7 @@ function UserCard({
           value={balance}
           onChange={(e) => setBalanceDraft(e.target.value)}
           placeholder="Solde (€)"
-          className="flex-1 px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg"
+          className={`${FIELD} flex-1 min-w-0`}
         />
 
         <button
@@ -1826,7 +1879,7 @@ function UserCard({
             if (updated) setBalanceDraft(null);
           }}
           disabled={balancePending}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg font-bold"
+          className={BTN_PRIMARY}
         >
           Mettre à jour
         </button>
@@ -1835,9 +1888,9 @@ function UserCard({
           onClick={() => onDelete(user)}
           disabled={deletePending}
           aria-label={`Supprimer le compte de ${user.username}`}
-          className="px-4 py-2 bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg font-bold"
+          className={BTN_DANGER}
         >
-          🗑️ Supprimer
+          Supprimer
         </button>
       </div>
     </div>
