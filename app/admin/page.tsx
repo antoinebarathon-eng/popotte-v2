@@ -553,13 +553,23 @@ export default function AdminPage() {
         setPending(`delete-product:${product.id}`);
 
         try {
-          await postAdmin({
+          const result = await postAdmin({
             action: 'delete_product',
             id: product.id,
           });
 
           await loadData(true);
-          showMessage('success', `Produit « ${product.nom} » supprimé.`);
+
+          // Un produit déjà commandé ne peut pas être supprimé sans casser
+          // l'historique des commandes : le serveur le désactive à la place.
+          if (result?.deactivated) {
+            showMessage(
+              'success',
+              `« ${product.nom} » a déjà été commandé : il a été désactivé (retiré du catalogue) plutôt que supprimé, pour garder l'historique des commandes.`
+            );
+          } else {
+            showMessage('success', `Produit « ${product.nom} » supprimé.`);
+          }
         } catch (error) {
           showMessage(
             'error',
