@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const [
       { data: products, error: productsError },
+      { data: categories, error: categoriesError },
       { data: users, error: usersError },
       { data: deletedUsers, error: deletedUsersError },
       { data: orders, error: ordersError },
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
         .select('*')
         .order('categorie')
         .order('nom'),
+
+      supabaseAdmin.from('categories').select('*').order('nom'),
 
       supabaseAdmin
         .from('users')
@@ -74,6 +77,11 @@ export async function GET(request: NextRequest) {
       console.warn('Lecture des comptes supprimés impossible:', deletedUsersError);
     }
 
+    if (categoriesError) {
+      // La table categories n'existe pas si la migration 0003 n'est pas passée.
+      console.warn('Lecture des catégories impossible:', categoriesError);
+    }
+
     const dettes = (users || []).reduce((sum, user) => {
       const solde = Number(user.solde_compte || 0);
       return sum + Math.max(-solde, 0);
@@ -91,6 +99,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         products: products || [],
+        categories: categories || [],
         users: users || [],
         deletedUsers: (deletedUsers || []).map((user) => ({
           ...user,
@@ -222,6 +231,166 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
 
       return NextResponse.json({ ok: true, product: data });
+    }
+
+    if (action === 'add_category') {
+      const nom = String(body.nom || '').trim();
+
+      if (!nom) {
+        return NextResponse.json(
+          { error: 'Le nom de la catégorie est obligatoire.' },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('categories')
+        .insert({ nom })
+        .select('*')
+        .single();
+
+      if (error) {
+        // Contrainte unique sur nom.
+        if (error.code === '23505') {
+          return NextResponse.json(
+            { error: 'Cette catégorie existe déjà.' },
+            { status: 400 }
+          );
+        }
+
+        throw error;
+      }
+
+      return NextResponse.json({ ok: true, category: data });
+    }
+
+    /*
+     * Renommer une catégorie renomme aussi la catégorie de tous les
+     * produits qui la portaient : sinon la fiche produit et la liste des
+     * catégories auraient deux noms différents pour la même chose.
+     */
+    if (action === 'rename_category') {
+      const id = String(body.id || '').trim();
+      const nom = String(body.nom || '').trim();
+
+      if (!id) {
+        return NextResponse.json(
+          { error: 'ID catégorie manquant.' },
+          { status: 400 }
+        );
+      }
+
+      if (!nom) {
+        return NextResponse.json(
+          { error: 'Le nom de la catégorie est obligatoire.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('categories')
+        .select('id, nom')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (!existing) {
+        return NextResponse.json(
+          { error: 'Catégorie introuvable.' },
+          { status: 404 }
+        );
+      }
+
+      if (existing.nom === nom) {
+        return NextResponse.json({ ok: true, category: existing });
+      }
+
+      const { data: renamed, error: renameError } = await supabaseAdmin
+        .from('categories')
+        .update({ nom })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (renameError) {
+        if (renameError.code === '23505') {
+          return NextResponse.json(
+            { error: 'Cette catégorie existe déjà.' },
+            { status: 400 }
+          );
+        }
+
+        throw renameError;
+      }
+
+      const { error: productsUpdateError } = await supabaseAdmin
+        .from('products')
+        .update({ categorie: nom })
+        .eq('categorie', existing.nom);
+
+      if (productsUpdateError) throw productsUpdateError;
+
+      return NextResponse.json({ ok: true, category: renamed });
+    }
+
+    /*
+     * Suppression d'une catégorie. Refusée tant qu'un produit l'utilise
+     * encore, pour ne pas laisser des produits avec une catégorie qui
+     * n'existe plus dans la liste (elle resterait affichée sur la fiche
+     * produit, mais introuvable dans le formulaire d'ajout).
+     */
+    if (action === 'delete_category') {
+      const id = String(body.id || '').trim();
+
+      if (!id) {
+        return NextResponse.json(
+          { error: 'ID catégorie manquant.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('categories')
+        .select('id, nom')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (!existing) {
+        return NextResponse.json(
+          { error: 'Catégorie introuvable.' },
+          { status: 404 }
+        );
+      }
+
+      const { count, error: countError } = await supabaseAdmin
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('categorie', existing.nom);
+
+      if (countError) throw countError;
+
+      if ((count || 0) > 0) {
+        return NextResponse.json(
+          {
+            error: `${count} produit${count && count > 1 ? 's' : ''} ${
+              count && count > 1 ? 'utilisent' : 'utilise'
+            } encore « ${existing.nom} ». Change leur catégorie avant de la supprimer.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabaseAdmin
+        .from('categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      return NextResponse.json({ ok: true });
     }
 
     if (action === 'delete_product') {
