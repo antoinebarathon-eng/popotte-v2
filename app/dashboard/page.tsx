@@ -18,11 +18,28 @@ type Product = {
   active: boolean;
 };
 
-const categoryLabels: Record<string, string> = {
-  boisson: '🥤 Boissons',
-  friandise: '🍬 Friandises',
-  chips: '🍟 Chips',
+type Category = {
+  id: string;
+  nom: string;
 };
+
+// Émojis connus pour les catégories historiques ; toute catégorie ajoutée
+// depuis l'admin (donc absente d'ici) retombe sur 🛒 au lieu de planter.
+const categoryEmojis: Record<string, string> = {
+  boisson: '🥤',
+  friandise: '🍬',
+  chips: '🍟',
+  alcool: '🍺',
+};
+
+function categoryEmoji(categorie: string) {
+  return categoryEmojis[categorie] ?? '🛒';
+}
+
+function categoryLabel(categorie: string) {
+  const nom = categorie.charAt(0).toUpperCase() + categorie.slice(1);
+  return `${categoryEmoji(categorie)} ${nom}`;
+}
 
 function getEmoji(category: string, name: string) {
   const n = name.toLowerCase();
@@ -40,10 +57,7 @@ function getEmoji(category: string, name: string) {
     return '🍫';
   }
 
-  if (category === 'chips') return '🍟';
-  if (category === 'boisson') return '🥤';
-
-  return '🍬';
+  return categoryEmoji(category);
 }
 
 function plural(count: number, singular: string, plural_: string) {
@@ -54,6 +68,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [cart, saveCart] = useCart();
 
   const [username, setUsername] = useState('');
@@ -122,15 +137,34 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Les catégories viennent de la table dédiée (gérée depuis l'admin) et
+  // non plus d'une liste figée dans le code : une catégorie ajoutée ou
+  // renommée dans l'admin apparaît ici sans redéploiement.
+  const loadCategories = useCallback(async () => {
+    try {
+      const { data, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, nom')
+        .order('nom');
+
+      if (categoriesError) throw categoriesError;
+
+      setCategories(data || []);
+    } catch (err) {
+      // Non bloquant : les produits restent utilisables sans les filtres.
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     // Fonction asynchrone locale : un appel direct dans le corps de l'effet
     // déclenche une cascade de rendus.
     const charger = async () => {
-      await Promise.all([loadProfile(), loadProducts()]);
+      await Promise.all([loadProfile(), loadProducts(), loadCategories()]);
     };
 
     charger();
-  }, [loadProfile, loadProducts]);
+  }, [loadProfile, loadProducts, loadCategories]);
 
   const getQuantity = useCallback(
     (productId: string) =>
@@ -299,19 +333,19 @@ export default function DashboardPage() {
               Tous
             </button>
 
-            {Object.entries(categoryLabels).map(([key, label]) => (
+            {categories.map((category) => (
               <button
-                key={key}
+                key={category.id}
                 type="button"
-                onClick={() => setSelectedCategory(key)}
-                aria-pressed={selectedCategory === key}
+                onClick={() => setSelectedCategory(category.nom)}
+                aria-pressed={selectedCategory === category.nom}
                 className={`shrink-0 px-5 py-3 rounded-xl bg-[#14161b] border font-black text-sm transition ${
-                  selectedCategory === key
+                  selectedCategory === category.nom
                     ? 'border-white/40 text-white'
                     : 'border-white/10 text-gray-400'
                 }`}
               >
-                {label}
+                {categoryLabel(category.nom)}
               </button>
             ))}
           </div>
