@@ -235,7 +235,7 @@ export default function DashboardPage() {
               type="button"
               onClick={() => router.push('/cart')}
               aria-label={`Voir le panier, ${cartCount} ${plural(cartCount, 'article', 'articles')}`}
-              className="relative w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-xl active:scale-95 transition"
+              className="relative w-12 h-12 rounded-xl bg-[#14161b] border border-white/10 hover:bg-white/5 flex items-center justify-center text-xl active:scale-95 transition"
             >
               <span aria-hidden="true">🛒</span>
 
@@ -292,7 +292,7 @@ export default function DashboardPage() {
               aria-pressed={selectedCategory === 'tous'}
               className={`shrink-0 px-5 py-3 rounded-xl bg-[#14161b] border font-black text-sm transition ${
                 selectedCategory === 'tous'
-                  ? 'border-blue-500/40 text-blue-400'
+                  ? 'border-white/40 text-white'
                   : 'border-white/10 text-gray-400'
               }`}
             >
@@ -307,7 +307,7 @@ export default function DashboardPage() {
                 aria-pressed={selectedCategory === key}
                 className={`shrink-0 px-5 py-3 rounded-xl bg-[#14161b] border font-black text-sm transition ${
                   selectedCategory === key
-                    ? 'border-blue-500/40 text-blue-400'
+                    ? 'border-white/40 text-white'
                     : 'border-white/10 text-gray-400'
                 }`}
               >
@@ -412,17 +412,17 @@ export default function DashboardPage() {
                       disabled={!available}
                       aria-label={available ? `Ajouter ${product.nom}` : undefined}
                       onClick={() => addProduct(product)}
-                      className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-white/10 disabled:text-gray-500 py-3.5 rounded-xl font-black text-base transition active:scale-[0.98]"
+                      className="w-full bg-white hover:bg-gray-200 text-black disabled:bg-white/10 disabled:text-gray-500 py-3.5 rounded-xl font-black text-base transition active:scale-[0.98]"
                     >
                       {available ? 'Ajouter' : 'Rupture de stock'}
                     </button>
                   ) : (
-                    <div className="w-full bg-blue-600 rounded-xl overflow-hidden flex items-center">
+                    <div className="w-full bg-white text-black rounded-xl overflow-hidden flex items-center">
                       <button
                         type="button"
                         aria-label={`Retirer un ${product.nom}`}
                         onClick={() => removeProduct(product)}
-                        className="w-14 h-12 text-xl font-black hover:bg-blue-500 transition"
+                        className="w-14 h-12 text-xl font-black hover:bg-gray-200 transition"
                       >
                         −
                       </button>
@@ -437,7 +437,7 @@ export default function DashboardPage() {
                         disabled={!available}
                         aria-label={`Ajouter un ${product.nom}`}
                         onClick={() => addProduct(product)}
-                        className="w-14 h-12 text-xl font-black hover:bg-blue-500 disabled:opacity-40 transition"
+                        className="w-14 h-12 text-xl font-black hover:bg-gray-200 disabled:opacity-40 transition"
                       >
                         +
                       </button>
@@ -454,7 +454,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => router.push('/cart')}
-          className="fixed bottom-5 left-4 right-4 z-50 max-w-lg mx-auto bg-blue-600 hover:bg-blue-500 rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-center justify-between gap-4 active:scale-[0.98] transition"
+          className="fixed bottom-5 left-4 right-4 z-50 max-w-lg mx-auto bg-white hover:bg-gray-200 text-black rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-center justify-between gap-4 active:scale-[0.98] transition"
         >
           <span className="font-black">
             Voir mon panier · {cartCount}{' '}
