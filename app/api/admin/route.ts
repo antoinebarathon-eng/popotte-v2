@@ -408,7 +408,24 @@ export async function POST(request: NextRequest) {
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        // Un produit déjà commandé est référencé par order_items : le
+        // supprimer casserait l'historique des commandes (erreur 23503,
+        // violation de clé étrangère). On le désactive à la place, comme
+        // pour un compte utilisateur déjà utilisé.
+        if (error.code === '23503') {
+          const { error: deactivateError } = await supabaseAdmin
+            .from('products')
+            .update({ active: false })
+            .eq('id', id);
+
+          if (deactivateError) throw deactivateError;
+
+          return NextResponse.json({ ok: true, deactivated: true });
+        }
+
+        throw error;
+      }
 
       return NextResponse.json({ ok: true });
     }
