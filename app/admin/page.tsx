@@ -22,6 +22,11 @@ type Product = {
   active: boolean;
 };
 
+type Category = {
+  id: string;
+  nom: string;
+};
+
 type User = {
   id: string;
   username: string;
@@ -86,6 +91,26 @@ type Message = {
 };
 
 /*
+ * window.confirm()/window.prompt() sont bloquants et, sur certains
+ * navigateurs mobiles (webview d'appli, PWA installée sur l'écran
+ * d'accueil), ne s'affichent jamais et renvoient aussitôt false/null : le
+ * bouton semblait alors ne rien faire. Cette boîte de dialogue maison
+ * remplace les trois usages (suppression produit, suppression compte,
+ * règlement de dette) et fonctionne partout.
+ */
+type ConfirmState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  // Si présent, le bouton de confirmation reste désactivé tant que le champ
+  // ne contient pas exactement ce texte (remplace window.prompt côté
+  // suppression de compte, qui demandait de taper SUPPRIMER).
+  requireText?: string;
+  onConfirm: () => void;
+};
+
+/*
  * État d'accès. Le code administrateur n'existe plus côté navigateur : il
  * était écrit en clair dans ce fichier et n'importe qui pouvait le lire dans
  * le bundle. Seul /api/admin/unlock le connaît désormais.
@@ -122,6 +147,7 @@ export default function AdminPage() {
   const [adminCode, setAdminCode] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -137,6 +163,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
   /*
    * Clé « action:id » de la requête en cours. Sans ça, un double clic sur
@@ -158,6 +185,9 @@ export default function AdminPage() {
     categorie: 'boisson',
     stock_quantity: '',
   });
+
+  const [newCategory, setNewCategory] = useState('');
+  const [categoryPending, setCategoryPending] = useState<string | null>(null);
 
   const messageTimer = useRef<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -253,6 +283,7 @@ export default function AdminPage() {
         }
 
         setProducts(result.products || []);
+        setCategories(result.categories || []);
         setUsers(result.users || []);
         setDeletedUsers(result.deletedUsers || []);
         setOrders(result.orders || []);
@@ -280,6 +311,18 @@ export default function AdminPage() {
     },
     [router, showMessage]
   );
+
+  /*
+   * Si la catégorie choisie par défaut disparaît (renommée, supprimée), on
+   * retombe sur la première catégorie disponible plutôt que de laisser le
+   * formulaire pointer vers un nom qui n'existe plus. Calculé au rendu (pas
+   * dans un effet) : c'est une valeur dérivée, pas un état à synchroniser.
+   */
+  const categorieProduitActive =
+    categories.length === 0 ||
+    categories.some((c) => c.nom === newProduct.categorie)
+      ? newProduct.categorie
+      : categories[0].nom;
 
   useEffect(() => {
     if (authState !== 'unlocked') return;
@@ -397,7 +440,7 @@ export default function AdminPage() {
         nom,
         description,
         prix,
-        categorie: newProduct.categorie,
+        categorie: categorieProduitActive,
         stock_quantity: stock,
       });
 
@@ -405,7 +448,7 @@ export default function AdminPage() {
         nom: '',
         description: '',
         prix: '',
-        categorie: 'boisson',
+        categorie: categorieProduitActive,
         stock_quantity: '',
       });
 
@@ -421,27 +464,112 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteProduct = async (product: Product) => {
-    if (!window.confirm('Supprimer définitivement ce produit ?')) return;
+  const handleAddCategory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    setPending(`delete-product:${product.id}`);
+    const nom = newCategory.trim();
+
+    if (!nom) {
+      showMessage('error', 'Nom de catégorie obligatoire.');
+      return;
+    }
+
+    setCategoryPending('add');
 
     try {
-      await postAdmin({
-        action: 'delete_product',
-        id: product.id,
-      });
-
+      await postAdmin({ action: 'add_category', nom });
+      setNewCategory('');
       await loadData(true);
-      showMessage('success', `Produit « ${product.nom} » supprimé.`);
+      showMessage('success', `Catégorie « ${nom} » ajoutée.`);
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error ? error.message : 'Erreur suppression.'
+        error instanceof Error ? error.message : 'Erreur ajout catégorie.'
       );
     } finally {
-      setPending(null);
+      setCategoryPending(null);
     }
+  };
+
+  const handleRenameCategory = async (category: Category, nom: string) => {
+    const trimmed = nom.trim();
+
+    if (!trimmed || trimmed === category.nom) return;
+
+    setCategoryPending(`rename:${category.id}`);
+
+    try {
+      await postAdmin({ action: 'rename_category', id: category.id, nom: trimmed });
+      await loadData(true);
+      showMessage(
+        'success',
+        `« ${category.nom} » renommée en « ${trimmed} ».`
+      );
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'Erreur renommage catégorie.'
+      );
+    } finally {
+      setCategoryPending(null);
+    }
+  };
+
+  const handleDeleteCategory = (category: Category) => {
+    setConfirmState({
+      title: `Supprimer la catégorie « ${category.nom} » ?`,
+      message:
+        'Possible seulement si aucun produit ne l’utilise encore.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setCategoryPending(`delete:${category.id}`);
+
+        try {
+          await postAdmin({ action: 'delete_category', id: category.id });
+          await loadData(true);
+          showMessage('success', `Catégorie « ${category.nom} » supprimée.`);
+        } catch (error) {
+          showMessage(
+            'error',
+            error instanceof Error ? error.message : 'Erreur suppression catégorie.'
+          );
+        } finally {
+          setCategoryPending(null);
+        }
+      },
+    });
+  };
+
+  const handleDeleteProduct = (product: Product) => {
+    setConfirmState({
+      title: 'Supprimer ce produit ?',
+      message: `« ${product.nom} » sera définitivement supprimé du catalogue.`,
+      confirmLabel: 'Supprimer',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setPending(`delete-product:${product.id}`);
+
+        try {
+          await postAdmin({
+            action: 'delete_product',
+            id: product.id,
+          });
+
+          await loadData(true);
+          showMessage('success', `Produit « ${product.nom} » supprimé.`);
+        } catch (error) {
+          showMessage(
+            'error',
+            error instanceof Error ? error.message : 'Erreur suppression.'
+          );
+        } finally {
+          setPending(null);
+        }
+      },
+    });
   };
 
   const handleToggleProduct = async (product: Product) => {
@@ -533,80 +661,80 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
-    const confirmation = window.prompt(
-      `Suppression du compte de ${user.username}.\n\n` +
-        `Le compte sera retiré des utilisateurs actifs, mais son nom et son historique seront conservés.\n\n` +
-        `Tape SUPPRIMER pour confirmer.`
-    );
+  const handleDeleteUser = (user: User) => {
+    setConfirmState({
+      title: `Supprimer le compte de ${user.username} ?`,
+      message:
+        'Le compte sera retiré des utilisateurs actifs, mais son nom et son historique de commandes seront conservés.',
+      confirmLabel: 'Supprimer le compte',
+      danger: true,
+      requireText: 'SUPPRIMER',
+      onConfirm: async () => {
+        setConfirmState(null);
+        setPending(`delete-user:${user.id}`);
 
-    if (confirmation !== 'SUPPRIMER') {
-      if (confirmation !== null) showMessage('error', 'Suppression annulée.');
-      return;
-    }
-
-    setPending(`delete-user:${user.id}`);
-
-    try {
-      await postAdmin({ action: 'delete_user', id: user.id });
-      await loadData(true);
-      showMessage(
-        'success',
-        `${user.username} a été déplacé dans « Utilisateurs supprimés ».`
-      );
-    } catch (error) {
-      /*
-       * Le serveur refuse la suppression d'un compte encore en dette et
-       * explique le montant restant : on relaie son message tel quel.
-       */
-      showMessage(
-        'error',
-        error instanceof Error ? error.message : 'Erreur suppression compte.'
-      );
-    } finally {
-      setPending(null);
-    }
+        try {
+          await postAdmin({ action: 'delete_user', id: user.id });
+          await loadData(true);
+          showMessage(
+            'success',
+            `${user.username} a été déplacé dans « Utilisateurs supprimés ».`
+          );
+        } catch (error) {
+          /*
+           * Le serveur refuse la suppression d'un compte encore en dette et
+           * explique le montant restant : on relaie son message tel quel.
+           */
+          showMessage(
+            'error',
+            error instanceof Error ? error.message : 'Erreur suppression compte.'
+          );
+        } finally {
+          setPending(null);
+        }
+      },
+    });
   };
 
-  const handleSettleDebt = async (user: User) => {
+  const handleSettleDebt = (user: User) => {
     const detteCents = Math.max(-toCents(user.solde_compte), 0);
 
     if (detteCents <= 0) return;
 
-    if (
-      !window.confirm(
-        `Confirmer le règlement de la dette de ${user.username} (${formatEuros(
-          detteCents
-        )}) ?`
-      )
-    ) {
-      return;
-    }
+    setConfirmState({
+      title: 'Confirmer le règlement de la dette ?',
+      message: `${user.username} doit ${formatEuros(
+        detteCents
+      )}. Son solde sera remis à 0,00 €.`,
+      confirmLabel: 'Dette réglée',
+      onConfirm: async () => {
+        setConfirmState(null);
+        setPending(`settle:${user.id}`);
 
-    setPending(`settle:${user.id}`);
+        try {
+          const result = await postAdmin({
+            action: 'settle_debt',
+            id: user.id,
+          });
 
-    try {
-      const result = await postAdmin({
-        action: 'settle_debt',
-        id: user.id,
-      });
+          await loadData(true);
 
-      await loadData(true);
-
-      showMessage(
-        'success',
-        `Dette de ${user.username} réglée : ${formatEuros(
-          toCents(result.dette)
-        )}. Solde remis à 0,00 €.`
-      );
-    } catch (error) {
-      showMessage(
-        'error',
-        error instanceof Error ? error.message : 'Erreur règlement dette.'
-      );
-    } finally {
-      setPending(null);
-    }
+          showMessage(
+            'success',
+            `Dette de ${user.username} réglée : ${formatEuros(
+              toCents(result.dette)
+            )}. Solde remis à 0,00 €.`
+          );
+        } catch (error) {
+          showMessage(
+            'error',
+            error instanceof Error ? error.message : 'Erreur règlement dette.'
+          );
+        } finally {
+          setPending(null);
+        }
+      },
+    });
   };
 
   /*
@@ -1233,6 +1361,57 @@ export default function AdminPage() {
             className="space-y-8"
           >
             <section className={`${CARD} p-6`}>
+              <h2 className="text-xl font-black mb-1">Catégories</h2>
+
+              <p className="text-gray-400 text-xs mb-6">
+                Ajoute, renomme ou retire les catégories proposées à la
+                création d&apos;un produit.
+              </p>
+
+              <div className="space-y-2 mb-4">
+                {categories.length === 0 ? (
+                  <p className="text-gray-400 text-sm">
+                    Aucune catégorie pour l&apos;instant.
+                  </p>
+                ) : (
+                  categories.map((category) => (
+                    <CategoryRow
+                      key={category.id}
+                      category={category}
+                      pending={categoryPending}
+                      onRename={handleRenameCategory}
+                      onDelete={handleDeleteCategory}
+                    />
+                  ))
+                )}
+              </div>
+
+              <form
+                onSubmit={handleAddCategory}
+                className="flex flex-wrap gap-2"
+              >
+                <label htmlFor="nouvelle-categorie" className="sr-only">
+                  Nom de la nouvelle catégorie
+                </label>
+
+                <input
+                  id="nouvelle-categorie"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  placeholder="Nouvelle catégorie (ex. dessert)"
+                  className={`${FIELD} flex-1 min-w-[200px]`}
+                />
+
+                <button
+                  disabled={categoryPending === 'add'}
+                  className={BTN_PRIMARY}
+                >
+                  {categoryPending === 'add' ? 'Ajout...' : 'Ajouter'}
+                </button>
+              </form>
+            </section>
+
+            <section className={`${CARD} p-6`}>
               <h2 className="text-xl font-black mb-1">Ajouter un produit</h2>
 
               <p className="text-gray-400 text-xs mb-6">
@@ -1333,7 +1512,7 @@ export default function AdminPage() {
 
                     <select
                       id="produit-categorie"
-                      value={newProduct.categorie}
+                      value={categorieProduitActive}
                       onChange={(e) =>
                         setNewProduct((p) => ({
                           ...p,
@@ -1342,10 +1521,18 @@ export default function AdminPage() {
                       }
                       className={FIELD}
                     >
-                      <option value="boisson">Boisson</option>
-                      <option value="friandise">Friandise</option>
-                      <option value="alcool">Alcool</option>
-                      <option value="chips">Chips</option>
+                      {/* Si la migration des catégories n'est pas encore
+                          passée, la liste est vide : on retombe sur les
+                          quatre catégories historiques pour ne pas bloquer
+                          l'ajout de produit. */}
+                      {(categories.length > 0
+                        ? categories.map((c) => c.nom)
+                        : ['boisson', 'friandise', 'alcool', 'chips']
+                      ).map((nom) => (
+                        <option key={nom} value={nom}>
+                          {nom.charAt(0).toUpperCase() + nom.slice(1)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -1647,6 +1834,8 @@ export default function AdminPage() {
           </section>
         )}
       </div>
+
+      <ConfirmModal state={confirmState} onCancel={() => setConfirmState(null)} />
     </main>
   );
 }
@@ -1740,8 +1929,8 @@ function UserCard({
   pending: string | null;
   onRecharge: (user: User, amount: number) => Promise<void>;
   onUpdateBalance: (id: string, value: string) => Promise<boolean>;
-  onSettleDebt: (user: User) => Promise<void>;
-  onDelete: (user: User) => Promise<void>;
+  onSettleDebt: (user: User) => void;
+  onDelete: (user: User) => void;
 }) {
   const [customAmount, setCustomAmount] = useState('');
 
@@ -1892,6 +2081,158 @@ function UserCard({
         >
           Supprimer
         </button>
+      </div>
+    </div>
+  );
+}
+
+function CategoryRow({
+  category,
+  pending,
+  onRename,
+  onDelete,
+}: {
+  category: Category;
+  pending: string | null;
+  onRename: (category: Category, nom: string) => Promise<void>;
+  onDelete: (category: Category) => void;
+}) {
+  const [draft, setDraft] = useState(category.nom);
+
+  const renamePending = pending === `rename:${category.id}`;
+  const deletePending = pending === `delete:${category.id}`;
+  const dirty = draft.trim() !== '' && draft.trim() !== category.nom;
+
+  return (
+    <div
+      className={`${SUB_CARD} px-4 py-3 flex flex-wrap items-center gap-2`}
+    >
+      <label htmlFor={`categorie-${category.id}`} className="sr-only">
+        Nom de la catégorie
+      </label>
+
+      <input
+        id={`categorie-${category.id}`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className={`${FIELD} flex-1 min-w-[160px]`}
+      />
+
+      <button
+        type="button"
+        onClick={() => onRename(category, draft)}
+        disabled={!dirty || renamePending}
+        className={BTN_NEUTRAL}
+      >
+        {renamePending ? 'Renommage...' : 'Renommer'}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onDelete(category)}
+        disabled={deletePending}
+        aria-label={`Supprimer la catégorie ${category.nom}`}
+        className={BTN_DANGER}
+      >
+        Supprimer
+      </button>
+    </div>
+  );
+}
+
+function ConfirmModal({
+  state,
+  onCancel,
+}: {
+  state: ConfirmState | null;
+  onCancel: () => void;
+}) {
+  if (!state) return null;
+
+  /*
+   * Clé = identité de la boîte de dialogue. Elle change à chaque nouvelle
+   * confirmation (le titre inclut toujours le nom d'utilisateur ou de
+   * produit concerné), ce qui fait remonter ConfirmModalBody à zéro : le
+   * champ de saisie repart vide sans avoir besoin d'un effet pour le
+   * réinitialiser.
+   */
+  return (
+    <ConfirmModalBody
+      key={`${state.title}|${state.message}`}
+      state={state}
+      onCancel={onCancel}
+    />
+  );
+}
+
+function ConfirmModalBody({
+  state,
+  onCancel,
+}: {
+  state: ConfirmState;
+  onCancel: () => void;
+}) {
+  const [typed, setTyped] = useState('');
+
+  const canConfirm = !state.requireText || typed === state.requireText;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className={`${CARD} w-full max-w-sm p-6`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="confirm-modal-title" className="text-lg font-black">
+          {state.title}
+        </h2>
+
+        <p className="text-gray-400 text-sm mt-2">{state.message}</p>
+
+        {state.requireText && (
+          <div className="mt-4">
+            <label htmlFor="confirm-modal-input" className="sr-only">
+              Tape {state.requireText} pour confirmer
+            </label>
+
+            <input
+              id="confirm-modal-input"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={`Tape ${state.requireText} pour confirmer`}
+              autoFocus
+              className={FIELD}
+            />
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-6">
+          <button
+            type="button"
+            onClick={onCancel}
+            className={`${BTN_NEUTRAL} flex-1`}
+          >
+            Annuler
+          </button>
+
+          <button
+            type="button"
+            onClick={state.onConfirm}
+            disabled={!canConfirm}
+            className={`${BTN} flex-1 ${
+              state.danger
+                ? 'bg-red-600 hover:bg-red-500 text-white'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
+          >
+            {state.confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
