@@ -93,7 +93,7 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Comment on t’appelle"
                 autoComplete="username"
-                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition"
                 required
               />
             </div>
@@ -113,7 +113,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Ton mot de passe"
                 autoComplete="current-password"
-                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-blue-500 transition"
+                className="w-full px-4 py-3.5 bg-[#0d0f13] border border-white/10 rounded-xl text-white placeholder-gray-500 outline-none focus:border-white/40 transition"
                 required
               />
             </div>
@@ -130,7 +130,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 py-4 rounded-xl font-black text-lg transition"
+              className="w-full bg-white hover:bg-gray-200 text-black active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 py-4 rounded-xl font-black text-lg transition"
             >
               {loading ? 'Connexion...' : 'Se connecter'}
             </button>
@@ -141,7 +141,7 @@ export default function LoginPage() {
               Pas encore inscrit ?{' '}
               <Link
                 href="/auth/signup"
-                className="text-blue-400 hover:text-blue-300 font-black"
+                className="text-gray-300 hover:text-white font-black"
               >
                 Créer mon compte
               </Link>

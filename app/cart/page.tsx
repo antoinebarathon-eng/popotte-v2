@@ -302,7 +302,7 @@ export default function CartPage() {
 
             <Link
               href="/dashboard"
-              className="mt-2 inline-flex bg-blue-600 hover:bg-blue-500 px-7 py-4 rounded-xl font-black transition"
+              className="mt-2 inline-flex bg-white hover:bg-gray-200 text-black px-7 py-4 rounded-xl font-black transition"
             >
               Voir les produits
             </Link>
@@ -351,7 +351,7 @@ export default function CartPage() {
                         disabled={ordering || quantity >= product.stock_quantity}
                         aria-label={`Ajouter un ${product.nom}`}
                         onClick={() => updateQuantity(product.id, quantity + 1)}
-                        className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 font-black text-xl transition disabled:opacity-40"
+                        className="w-12 h-12 rounded-xl bg-white hover:bg-gray-200 text-black font-black text-xl transition disabled:opacity-40"
                       >
                         +
                       </button>
@@ -399,7 +399,7 @@ export default function CartPage() {
                   type="button"
                   onClick={handleOrder}
                   disabled={ordering || cartItems.length === 0}
-                  className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 px-6 py-4 rounded-xl font-black text-lg transition"
+                  className="w-full bg-white hover:bg-gray-200 text-black active:scale-[0.98] disabled:bg-white/10 disabled:text-gray-500 px-6 py-4 rounded-xl font-black text-lg transition"
                 >
                   {ordering
                     ? 'Commande en cours...'
@@ -408,7 +408,7 @@ export default function CartPage() {
 
                 <Link
                   href="/dashboard"
-                  className="block text-center text-blue-400 hover:text-blue-300 text-sm font-black"
+                  className="block text-center text-gray-300 hover:text-white text-sm font-black"
                 >
                   ← Continuer mes achats
                 </Link>
@@ -427,7 +427,7 @@ export default function CartPage() {
             className="w-full max-w-md bg-[#14161b] border border-white/10 rounded-3xl p-7 text-center flex flex-col items-center gap-4"
           >
             <div
-              className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-black"
+              className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center text-2xl font-black"
               aria-hidden="true"
             >
               ✓
@@ -454,7 +454,7 @@ export default function CartPage() {
                 setSummary(null);
                 router.push('/dashboard');
               }}
-              className="w-full mt-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] px-6 py-4 rounded-xl font-black transition"
+              className="w-full mt-2 bg-white hover:bg-gray-200 text-black active:scale-[0.98] px-6 py-4 rounded-xl font-black transition"
             >
               Continuer
             </button>
