@@ -171,6 +171,9 @@ export default function AdminPage() {
    */
   const [pending, setPending] = useState<string | null>(null);
 
+  // Export CSV des dettes, déclenché à la demande depuis l'onglet Dettes.
+  const [exportingDebts, setExportingDebts] = useState(false);
+
   const [openStats, setOpenStats] = useState({
     ventes: true,
     produits: false,
@@ -745,6 +748,58 @@ export default function AdminPage() {
         }
       },
     });
+  };
+
+  /*
+   * Export des dettes en CSV (ouvrable directement dans Excel), généré à la
+   * demande par le serveur — l'admin n'a plus besoin de me le redemander à
+   * chaque fois. Le fichier contient toujours l'état le plus à jour de la
+   * base, indépendamment de ce qui est déjà chargé dans la page.
+   */
+  const handleExportDebts = async () => {
+    setExportingDebts(true);
+
+    try {
+      const response = await fetch('/api/admin/export-dettes', {
+        cache: 'no-store',
+      });
+
+      if (response.status === 401) {
+        router.replace('/auth/login');
+        return;
+      }
+
+      if (response.status === 403) {
+        setAuthState('locked');
+        return;
+      }
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || 'Erreur export.');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const date = new Date().toISOString().slice(0, 10);
+
+      const lien = document.createElement('a');
+      lien.href = url;
+      lien.download = `dettes-popotte-${date}.csv`;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      window.URL.revokeObjectURL(url);
+
+      showMessage('success', 'Export des dettes téléchargé.');
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'Erreur export.'
+      );
+    } finally {
+      setExportingDebts(false);
+    }
   };
 
   /*
@@ -1707,11 +1762,24 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <p className="text-gray-400 text-xs">
-                {debtUsers.length} utilisateur
-                {debtUsers.length > 1 ? 's' : ''} concerné
-                {debtUsers.length > 1 ? 's' : ''}
-              </p>
+              <div className="flex flex-col items-end gap-2">
+                <p className="text-gray-400 text-xs">
+                  {debtUsers.length} utilisateur
+                  {debtUsers.length > 1 ? 's' : ''} concerné
+                  {debtUsers.length > 1 ? 's' : ''}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleExportDebts}
+                  disabled={exportingDebts}
+                  className={BTN_NEUTRAL}
+                >
+                  {exportingDebts
+                    ? 'Export en cours...'
+                    : 'Exporter (Excel)'}
+                </button>
+              </div>
             </div>
 
             {debtUsers.length === 0 ? (
