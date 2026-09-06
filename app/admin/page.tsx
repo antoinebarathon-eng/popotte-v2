@@ -158,7 +158,13 @@ export default function AdminPage() {
     commandes: 0,
   });
   const [tab, setTab] = useState<
-    'products' | 'users' | 'deleted-users' | 'orders' | 'debts' | 'stats'
+    | 'products'
+    | 'stock'
+    | 'users'
+    | 'deleted-users'
+    | 'orders'
+    | 'debts'
+    | 'stats'
   >('products');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -191,6 +197,16 @@ export default function AdminPage() {
 
   const [newCategory, setNewCategory] = useState('');
   const [categoryPending, setCategoryPending] = useState<string | null>(null);
+
+  /*
+   * Brouillons de l'onglet Stock : quantité achetée / comptée saisies pour
+   * chaque produit, avant validation. Existent seulement côté client tant
+   * que l'admin n'a pas cliqué sur « Enregistrer » pour ce produit.
+   */
+  const [stockDrafts, setStockDrafts] = useState<
+    Record<string, { achat: string; compte: string }>
+  >({});
+  const [stockPending, setStockPending] = useState<string | null>(null);
 
   const messageTimer = useRef<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -519,10 +535,20 @@ export default function AdminPage() {
   };
 
   const handleDeleteCategory = (category: Category) => {
+    const produitsConcernes = products.filter(
+      (p) => p.categorie === category.nom
+    ).length;
+
     setConfirmState({
       title: `Supprimer la catégorie « ${category.nom} » ?`,
       message:
-        'Possible seulement si aucun produit ne l’utilise encore.',
+        produitsConcernes > 0
+          ? `Elle ne sera plus proposée à la création d'un produit. ${produitsConcernes} produit${
+              produitsConcernes > 1 ? 's' : ''
+            } garde${
+              produitsConcernes > 1 ? 'nt' : ''
+            } déjà « ${category.nom} » comme catégorie ; rien ne change pour eux.`
+          : "Elle ne sera plus proposée à la création d'un produit.",
       confirmLabel: 'Supprimer',
       danger: true,
       onConfirm: async () => {
@@ -603,6 +629,89 @@ export default function AdminPage() {
       );
     } finally {
       setPending(null);
+    }
+  };
+
+  const handleStockDraftChange = (
+    productId: string,
+    field: 'achat' | 'compte',
+    value: string
+  ) => {
+    setStockDrafts((prev) => ({
+      ...prev,
+      [productId]: {
+        achat: prev[productId]?.achat ?? '',
+        compte: prev[productId]?.compte ?? '',
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleUpdateStock = async (product: Product) => {
+    const draft = stockDrafts[product.id];
+    const quantiteAchetee = Number(draft?.achat || 0);
+    const quantiteComptee = Number(draft?.compte);
+
+    if (!Number.isInteger(quantiteAchetee) || quantiteAchetee < 0) {
+      showMessage('error', 'Quantité achetée invalide.');
+      return;
+    }
+
+    if (draft?.compte === undefined || draft.compte === '') {
+      showMessage('error', 'Indique la quantité comptée sur place.');
+      return;
+    }
+
+    if (!Number.isInteger(quantiteComptee) || quantiteComptee < 0) {
+      showMessage('error', 'Quantité comptée invalide.');
+      return;
+    }
+
+    setStockPending(product.id);
+
+    try {
+      const result = await postAdmin({
+        action: 'update_stock',
+        id: product.id,
+        quantite_achetee: quantiteAchetee,
+        quantite_comptee: quantiteComptee,
+      });
+
+      await loadData(true);
+
+      setStockDrafts((prev) => {
+        const next = { ...prev };
+        delete next[product.id];
+        return next;
+      });
+
+      if (result?.ecart === 0) {
+        showMessage(
+          'success',
+          `« ${product.nom} » : stock à jour (${result.quantiteComptee}), aucun écart.`
+        );
+      } else if (result?.ecart < 0) {
+        showMessage(
+          'error',
+          `« ${product.nom} » : ${Math.abs(
+            result.ecart
+          )} manquant${Math.abs(result.ecart) > 1 ? 's' : ''} par rapport à ce qui était attendu (${
+            result.stockAttendu
+          }). Nouveau stock enregistré : ${result.quantiteComptee}.`
+        );
+      } else {
+        showMessage(
+          'success',
+          `« ${product.nom} » : ${result.ecart} de plus que prévu (${result.stockAttendu} attendus). Nouveau stock enregistré : ${result.quantiteComptee}.`
+        );
+      }
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'Erreur mise à jour stock.'
+      );
+    } finally {
+      setStockPending(null);
     }
   };
 
@@ -1081,6 +1190,15 @@ export default function AdminPage() {
               onClick={() => setTab('products')}
             >
               Produits ({products.length})
+            </TabButton>
+
+            <TabButton
+              id="onglet-stock"
+              panelId="panneau-stock"
+              active={tab === 'stock'}
+              onClick={() => setTab('stock')}
+            >
+              Stock
             </TabButton>
 
             <TabButton
@@ -1609,53 +1727,278 @@ export default function AdminPage() {
             </section>
 
             <section>
-              <h2 className="text-xl font-black mb-4">Produits</h2>
+              <h2 className="text-xl font-black mb-1">
+                En vente ({products.filter((p) => p.active).length})
+              </h2>
+
+              <p className="text-gray-400 text-xs mb-4">
+                « Désactiver » retire un produit du catalogue sans perdre son
+                historique de commandes. « Supprimer » l&apos;efface pour de
+                bon s&apos;il n&apos;a jamais été commandé, sinon il est
+                automatiquement désactivé à la place.
+              </p>
 
               <div className="space-y-2">
-                {products.map((product) => (
-                  <div
-                    key={product.id}
-                    className={`${CARD} p-5 flex flex-wrap justify-between items-center gap-4`}
-                  >
-                    <div>
-                      <p className="text-base font-black">{product.nom}</p>
-
-                      <p className="text-gray-400 text-xs mt-1">
-                        {product.categorie} •{' '}
-                        {formatEuros(toCents(product.prix))} • Stock :{' '}
-                        {product.stock_quantity}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleToggleProduct(product)}
-                        disabled={pending === `toggle-product:${product.id}`}
-                        aria-label={`${
-                          product.active ? 'Désactiver' : 'Activer'
-                        } le produit ${product.nom}`}
-                        className={
-                          product.active
-                            ? `${BTN} bg-white hover:bg-gray-200 text-black`
-                            : `${BTN} bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400`
-                        }
+                {products.filter((p) => p.active).length === 0 ? (
+                  <p className="text-gray-400 text-sm">
+                    Aucun produit en vente.
+                  </p>
+                ) : (
+                  products
+                    .filter((p) => p.active)
+                    .map((product) => (
+                      <div
+                        key={product.id}
+                        className={`${CARD} p-5 flex flex-wrap justify-between items-center gap-4`}
                       >
-                        {product.active ? 'Actif' : 'Inactif'}
-                      </button>
+                        <div>
+                          <p className="text-base font-black">
+                            {product.nom}
+                          </p>
 
-                      <button
-                        onClick={() => handleDeleteProduct(product)}
-                        disabled={pending === `delete-product:${product.id}`}
-                        aria-label={`Supprimer le produit ${product.nom}`}
-                        className={BTN_DANGER}
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                          <p className="text-gray-400 text-xs mt-1">
+                            {product.categorie} •{' '}
+                            {formatEuros(toCents(product.prix))} • Stock :{' '}
+                            {product.stock_quantity}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleToggleProduct(product)}
+                            disabled={
+                              pending === `toggle-product:${product.id}`
+                            }
+                            aria-label={`Désactiver le produit ${product.nom}`}
+                            className={`${BTN} bg-white hover:bg-gray-200 text-black`}
+                          >
+                            Actif
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteProduct(product)}
+                            disabled={
+                              pending === `delete-product:${product.id}`
+                            }
+                            aria-label={`Supprimer le produit ${product.nom}`}
+                            className={BTN_DANGER}
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
               </div>
             </section>
+
+            {products.some((p) => !p.active) && (
+              <section>
+                <h2 className="text-xl font-black mb-1">
+                  Retirés du catalogue (
+                  {products.filter((p) => !p.active).length})
+                </h2>
+
+                <p className="text-gray-400 text-xs mb-4">
+                  Plus visibles pour les clients. Déjà commandés au moins une
+                  fois par le passé, ils ne peuvent pas être effacés sans
+                  casser l&apos;historique des commandes — d&apos;où le
+                  bouton « Réactiver » plutôt que « Supprimer ».
+                </p>
+
+                <div className="space-y-2">
+                  {products
+                    .filter((p) => !p.active)
+                    .map((product) => (
+                      <div
+                        key={product.id}
+                        className={`${CARD} p-5 flex flex-wrap justify-between items-center gap-4 opacity-60`}
+                      >
+                        <div>
+                          <p className="text-base font-black">
+                            {product.nom}
+                          </p>
+
+                          <p className="text-gray-400 text-xs mt-1">
+                            {product.categorie} •{' '}
+                            {formatEuros(toCents(product.prix))} • Stock :{' '}
+                            {product.stock_quantity}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleToggleProduct(product)}
+                          disabled={pending === `toggle-product:${product.id}`}
+                          aria-label={`Réactiver le produit ${product.nom}`}
+                          className={BTN_NEUTRAL}
+                        >
+                          Réactiver
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {tab === 'stock' && (
+          <div
+            id="panneau-stock"
+            role="tabpanel"
+            aria-labelledby="onglet-stock"
+            className="space-y-4"
+          >
+            <section className={`${CARD} p-6`}>
+              <h2 className="text-xl font-black mb-1">
+                Inventaire &amp; réapprovisionnement
+              </h2>
+
+              <p className="text-gray-400 text-xs">
+                À faire sur place, au moment où tu ranges ce que tu viens
+                d&apos;acheter : indique combien de nouvelles unités tu
+                ajoutes, puis compte ce qu&apos;il y a vraiment sur
+                l&apos;étagère une fois tout rangé. Si le compte ne tombe pas
+                juste, c&apos;est qu&apos;il manque (ou qu&apos;il y a en
+                trop) des produits jamais passés par une commande de
+                l&apos;appli — casse, offert, oubli de compte la dernière
+                fois... Le nombre compté devient le nouveau stock
+                enregistré.
+              </p>
+            </section>
+
+            <div className="space-y-2">
+              {products.length === 0 ? (
+                <p className="text-gray-400 text-sm">Aucun produit.</p>
+              ) : (
+                products.map((product) => {
+                  const draft = stockDrafts[product.id];
+                  const achat = draft?.achat ?? '';
+                  const compte = draft?.compte ?? '';
+                  const achatNombre = Number(achat || 0);
+                  const compteNombre = Number(compte);
+                  const stockAttendu =
+                    Number(product.stock_quantity || 0) +
+                    (Number.isFinite(achatNombre) ? achatNombre : 0);
+                  const ecartVisible =
+                    compte !== '' && Number.isInteger(compteNombre)
+                      ? compteNombre - stockAttendu
+                      : null;
+
+                  return (
+                    <div
+                      key={product.id}
+                      className={`${CARD} p-5 space-y-3 ${
+                        !product.active ? 'opacity-60' : ''
+                      }`}
+                    >
+                      <div className="flex flex-wrap justify-between items-center gap-2">
+                        <div>
+                          <p className="text-base font-black">
+                            {product.nom}
+                            {!product.active && (
+                              <span className="ml-2 text-xs font-bold text-gray-400">
+                                (retiré du catalogue)
+                              </span>
+                            )}
+                          </p>
+
+                          <p className="text-gray-400 text-xs mt-1">
+                            {product.categorie} • Stock système actuel :{' '}
+                            {product.stock_quantity}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                        <div className="flex flex-col">
+                          <label
+                            htmlFor={`stock-achat-${product.id}`}
+                            className="text-gray-400 text-xs mb-1"
+                          >
+                            Quantité achetée (ajout)
+                          </label>
+
+                          <input
+                            id={`stock-achat-${product.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={achat}
+                            onChange={(e) =>
+                              handleStockDraftChange(
+                                product.id,
+                                'achat',
+                                e.target.value
+                              )
+                            }
+                            placeholder="0"
+                            className={FIELD}
+                          />
+                        </div>
+
+                        <div className="flex flex-col">
+                          <label
+                            htmlFor={`stock-compte-${product.id}`}
+                            className="text-gray-400 text-xs mb-1"
+                          >
+                            Quantité comptée sur place
+                          </label>
+
+                          <input
+                            id={`stock-compte-${product.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={compte}
+                            onChange={(e) =>
+                              handleStockDraftChange(
+                                product.id,
+                                'compte',
+                                e.target.value
+                              )
+                            }
+                            placeholder={`Attendu : ${stockAttendu}`}
+                            className={FIELD}
+                          />
+                        </div>
+
+                        <button
+                          onClick={() => handleUpdateStock(product)}
+                          disabled={stockPending === product.id || compte === ''}
+                          className={`${BTN_PRIMARY} h-fit`}
+                        >
+                          {stockPending === product.id
+                            ? 'Enregistrement...'
+                            : 'Enregistrer'}
+                        </button>
+                      </div>
+
+                      {ecartVisible !== null && (
+                        <p
+                          className={`text-xs font-bold ${
+                            ecartVisible < 0
+                              ? 'text-red-400'
+                              : ecartVisible > 0
+                              ? 'text-yellow-400'
+                              : 'text-green-400'
+                          }`}
+                        >
+                          {ecartVisible === 0 &&
+                            'Aucun écart : le compte correspond à ce qui était attendu.'}
+                          {ecartVisible < 0 &&
+                            `${Math.abs(ecartVisible)} manquant${
+                              Math.abs(ecartVisible) > 1 ? 's' : ''
+                            } par rapport à ce qui était attendu (${stockAttendu}).`}
+                          {ecartVisible > 0 &&
+                            `${ecartVisible} de plus que prévu (${stockAttendu} attendus).`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
 
