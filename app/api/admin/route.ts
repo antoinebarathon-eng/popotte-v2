@@ -335,10 +335,14 @@ export async function POST(request: NextRequest) {
     }
 
     /*
-     * Suppression d'une catégorie. Refusée tant qu'un produit l'utilise
-     * encore, pour ne pas laisser des produits avec une catégorie qui
-     * n'existe plus dans la liste (elle resterait affichée sur la fiche
-     * produit, mais introuvable dans le formulaire d'ajout).
+     * Suppression d'une catégorie. products.categorie est du texte libre
+     * (aucune clé étrangère vers categories, voir migration 0004) : la
+     * supprimer ne casse rien. Les produits qui la portaient encore gardent
+     * simplement ce nom en texte ; elle ne réapparaît plus dans le
+     * formulaire d'ajout, il suffit de leur choisir une autre catégorie
+     * quand on veut. Avant, la suppression était bloquée dès qu'un produit
+     * l'utilisait encore — ce qui, en pratique, empêchait de supprimer
+     * presque toutes les catégories.
      */
     if (action === 'delete_category') {
       const id = String(body.id || '').trim();
@@ -372,17 +376,6 @@ export async function POST(request: NextRequest) {
 
       if (countError) throw countError;
 
-      if ((count || 0) > 0) {
-        return NextResponse.json(
-          {
-            error: `${count} produit${count && count > 1 ? 's' : ''} ${
-              count && count > 1 ? 'utilisent' : 'utilise'
-            } encore « ${existing.nom} ». Change leur catégorie avant de la supprimer.`,
-          },
-          { status: 400 }
-        );
-      }
-
       const { error } = await supabaseAdmin
         .from('categories')
         .delete()
@@ -390,7 +383,7 @@ export async function POST(request: NextRequest) {
 
       if (error) throw error;
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, produitsConcernes: count || 0 });
     }
 
     if (action === 'delete_product') {
@@ -449,6 +442,83 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
 
       return NextResponse.json({ ok: true, active });
+    }
+
+    /*
+     * Inventaire physique d'un produit, fait sur place en réapprovisionnant.
+     *
+     * quantite_achetee : ce que l'admin vient d'acheter et ajoute au stock.
+     * quantite_comptee : ce qu'il compte réellement sur l'étagère une fois
+     * le réapprovisionnement fait.
+     *
+     * Le stock système (avant) plus ce qui a été acheté donne le stock
+     * attendu. S'il diffère de ce qui est réellement compté, c'est qu'il
+     * manque (ou qu'il y a en trop) des produits jamais passés par une
+     * commande de l'appli — casse, vol, offert, erreur de compte précédente,
+     * etc. Le compte physique fait foi : c'est lui qui devient le nouveau
+     * stock enregistré.
+     */
+    if (action === 'update_stock') {
+      const id = String(body.id || '').trim();
+      const quantiteAchetee = Number(body.quantite_achetee);
+      const quantiteComptee = Number(body.quantite_comptee);
+
+      if (!id) {
+        return NextResponse.json(
+          { error: 'ID produit manquant.' },
+          { status: 400 }
+        );
+      }
+
+      if (!Number.isInteger(quantiteAchetee) || quantiteAchetee < 0) {
+        return NextResponse.json(
+          { error: 'Quantité achetée invalide.' },
+          { status: 400 }
+        );
+      }
+
+      if (!Number.isInteger(quantiteComptee) || quantiteComptee < 0) {
+        return NextResponse.json(
+          { error: 'Quantité comptée invalide.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: product, error: productError } = await supabaseAdmin
+        .from('products')
+        .select('id, nom, stock_quantity')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (productError) throw productError;
+
+      if (!product) {
+        return NextResponse.json(
+          { error: 'Produit introuvable.' },
+          { status: 404 }
+        );
+      }
+
+      const ancienStock = Number(product.stock_quantity || 0);
+      const stockAttendu = ancienStock + quantiteAchetee;
+      const ecart = quantiteComptee - stockAttendu;
+
+      const { error: updateError } = await supabaseAdmin
+        .from('products')
+        .update({ stock_quantity: quantiteComptee })
+        .eq('id', id);
+
+      if (updateError) throw updateError;
+
+      return NextResponse.json({
+        ok: true,
+        nom: product.nom,
+        ancienStock,
+        quantiteAchetee,
+        stockAttendu,
+        quantiteComptee,
+        ecart,
+      });
     }
 
     if (action === 'update_user_balance') {
